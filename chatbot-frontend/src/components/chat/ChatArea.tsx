@@ -5,6 +5,7 @@ import remarkGfm from "remark-gfm";
 type Message = {
   role: "user" | "bot";
   text: string;
+  sources?: string[];
 };
 
 interface ChatAreaProps {
@@ -21,25 +22,18 @@ export default function ChatArea({ messages, isStreaming, userName, userEmail }:
   const isNearBottom = () => {
     const container = scrollRef.current;
     if (!container) return true;
-
     const distanceFromBottom =
       container.scrollHeight - container.scrollTop - container.clientHeight;
-
     return distanceFromBottom <= 120;
   };
 
   useEffect(() => {
     const container = scrollRef.current;
     if (!container) return;
-
-    // Don't force scroll if user has intentionally scrolled up.
     if (!isNearBottom()) return;
 
-    if (rafRef.current) {
-      cancelAnimationFrame(rafRef.current);
-    }
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
 
-    // During stream, use instant scroll to avoid stacking many smooth animations.
     rafRef.current = requestAnimationFrame(() => {
       container.scrollTo({
         top: container.scrollHeight,
@@ -58,7 +52,6 @@ export default function ChatArea({ messages, isStreaming, userName, userEmail }:
 
   if (messages.length === 0) {
     const firstName = userName ? userName.split(" ")[0] : "Student";
-
     return (
       <div className="flex-1 px-8 py-10 overflow-y-auto w-full space-y-8 pb-32 flex flex-col items-center justify-center">
         <div className="flex flex-col items-center justify-center py-12 text-center max-w-5xl mx-auto w-full">
@@ -84,7 +77,8 @@ export default function ChatArea({ messages, isStreaming, userName, userEmail }:
         const isStreamingThis = isLastBot && isStreaming;
         const isEmpty = msg.role === "bot" && msg.text === "";
         const previousRole = idx > 0 ? messages[idx - 1].role : null;
-        
+        const sources = msg.sources || [];
+
         return (
           <div key={idx} className="flex flex-col w-full">
             <div className={`w-full flex items-start gap-4 md:gap-6 ${idx > 0 && msg.role === "user" ? "mt-8" : "mt-0"}`}>
@@ -102,48 +96,72 @@ export default function ChatArea({ messages, isStreaming, userName, userEmail }:
               )}
 
               {/* Content */}
-            <div className="flex-1 min-w-0">
-              {msg.role === "bot" && idx > 0 && previousRole === "user" && (
-                <div className="w-full h-[2px] bg-slate-300/80 my-3" />
-              )}
-              {msg.role === "user" ? (
-                <div className="text-[15px] md:text-base leading-relaxed text-slate-800 whitespace-pre-wrap mt-1" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
-                  {msg.text}
-                </div>
-              ) : (
-                <div className={`text-[15px] md:text-base leading-relaxed text-[#23457a] w-full ${isStreamingThis ? "streaming-bubble" : ""}`}>
-                  {isEmpty ? (
-                     <div className="flex items-center gap-2 text-[#23457a]/50 mt-2">
-                       <span className="flex gap-1">
-                         <span className="w-1.5 h-1.5 bg-[#23457a]/50 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                         <span className="w-1.5 h-1.5 bg-[#23457a]/50 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                         <span className="w-1.5 h-1.5 bg-[#23457a]/50 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
-                       </span>
-                     </div>
-                  ) : (
-                    <div className="prose prose-slate max-w-none 
-                      prose-p:mt-1 prose-p:mb-2 prose-p:leading-relaxed prose-p:first:mt-1 prose-p:text-[#23457a]
-                      prose-ul:my-3 prose-ol:my-3 prose-li:my-1.5 prose-li:text-[#23457a] prose-li:leading-relaxed
-                      prose-headings:font-bold prose-headings:text-[#1e3a63] prose-headings:mt-6 prose-headings:mb-3 prose-headings:first:mt-1
-                      prose-code:bg-slate-100/50 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:text-[14px] prose-code:text-[#0d47a1] prose-code:before:content-none prose-code:after:content-none
-                      prose-pre:bg-[#0f172a] prose-pre:text-slate-50 prose-pre:rounded-xl prose-pre:p-4 prose-pre:my-4 prose-pre:shadow-sm
-                      prose-strong:text-[#193259] prose-strong:font-semibold
-                      prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline
-                      prose-hr:my-8 prose-hr:border-slate-300/70
-                    " style={{ fontFamily: '"JetBrains Mono", monospace' }}>
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {msg.text}
-                      </ReactMarkdown>
-                      {isStreamingThis && (
-                        <span className="inline-block w-2 h-4 bg-slate-400 ml-1 animate-pulse rounded-sm align-middle" />
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
+              <div className="flex-1 min-w-0">
+                {msg.role === "bot" && idx > 0 && previousRole === "user" && (
+                  <div className="w-full h-[2px] bg-slate-300/80 my-3" />
+                )}
+                {msg.role === "user" ? (
+                  <div className="text-[15px] md:text-base leading-relaxed text-slate-800 whitespace-pre-wrap mt-1" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
+                    {msg.text}
+                  </div>
+                ) : (
+                  <div className={`text-[15px] md:text-base leading-relaxed text-[#23457a] w-full ${isStreamingThis ? "streaming-bubble" : ""}`}>
+                    {isEmpty ? (
+                      <div className="flex items-center gap-2 text-[#23457a]/50 mt-2">
+                        <span className="flex gap-1">
+                          <span className="w-1.5 h-1.5 bg-[#23457a]/50 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                          <span className="w-1.5 h-1.5 bg-[#23457a]/50 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                          <span className="w-1.5 h-1.5 bg-[#23457a]/50 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                        </span>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="prose prose-slate max-w-none 
+                          prose-p:mt-1 prose-p:mb-2 prose-p:leading-relaxed prose-p:first:mt-1 prose-p:text-[#23457a]
+                          prose-ul:my-3 prose-ol:my-3 prose-li:my-1.5 prose-li:text-[#23457a] prose-li:leading-relaxed
+                          prose-headings:font-bold prose-headings:text-[#1e3a63] prose-headings:mt-6 prose-headings:mb-3 prose-headings:first:mt-1
+                          prose-code:bg-slate-100/50 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:text-[14px] prose-code:text-[#0d47a1] prose-code:before:content-none prose-code:after:content-none
+                          prose-pre:bg-[#0f172a] prose-pre:text-slate-50 prose-pre:rounded-xl prose-pre:p-4 prose-pre:my-4 prose-pre:shadow-sm
+                          prose-strong:text-[#193259] prose-strong:font-semibold
+                          prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline
+                          prose-hr:my-8 prose-hr:border-slate-300/70
+                        " style={{ fontFamily: '"JetBrains Mono", monospace' }}>
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {msg.text}
+                          </ReactMarkdown>
+                          {isStreamingThis && (
+                            <span className="inline-block w-2 h-4 bg-slate-400 ml-1 animate-pulse rounded-sm align-middle" />
+                          )}
+                        </div>
+
+                        {/* Sources — from structured JSON, not parsed from text */}
+                        {sources.length > 0 && !isStreamingThis && (
+                          <div className="mt-4 pt-3 border-t border-slate-200/60">
+                            <div className="flex items-center gap-1.5 text-xs text-slate-400 font-medium mb-1.5 uppercase tracking-wider">
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                              </svg>
+                              Sources
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {sources.map((src, i) => (
+                                <span
+                                  key={i}
+                                  className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-slate-100 text-slate-500 border border-slate-200/80"
+                                >
+                                  {src}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
         );
       })}
       </div>

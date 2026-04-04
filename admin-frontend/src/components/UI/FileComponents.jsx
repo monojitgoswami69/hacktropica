@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, memo } from 'react';
+import React, { useState, useEffect, useMemo, memo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Document, Page, pdfjs } from 'react-pdf';
@@ -141,6 +141,21 @@ const CustomPDFViewer = ({ url }) => {
   const [numPages, setNumPages] = useState(null);
   const [scale, setScale] = useState(1.0);
 
+  // Build file prop with auth headers for backend-proxied URLs
+  const fileProp = useMemo(() => {
+    if (!url) return null;
+    // If the URL points to our backend proxy, attach auth headers
+    const token = (() => {
+      try {
+        return sessionStorage.getItem('admin_token') || localStorage.getItem('admin_token');
+      } catch { return null; }
+    })();
+    if (token) {
+      return { url, httpHeaders: { Authorization: `Bearer ${token}` } };
+    }
+    return url;
+  }, [url]);
+
   function onDocumentLoadSuccess({ numPages }) {
     setNumPages(numPages);
   }
@@ -180,7 +195,7 @@ const CustomPDFViewer = ({ url }) => {
       <div className="flex-1 overflow-auto p-2 sm:p-8 bg-neutral-100/50">
         <div className="flex justify-center min-h-full">
           <Document
-            file={url}
+            file={fileProp}
             onLoadSuccess={onDocumentLoadSuccess}
             loading={
               <div className="flex items-center justify-center h-64 w-full">

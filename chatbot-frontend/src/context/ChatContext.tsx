@@ -10,6 +10,7 @@ import {
 export interface Message {
   role: "user" | "bot";
   text: string;
+  sources?: string[];
 }
 
 export interface Chat {
@@ -306,26 +307,70 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
       const decoder = new TextDecoder();
       let botResponse = "";
+      let botSources: string[] = [];
+      let lineBuffer = "";
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value, { stream: true });
-        botResponse += chunk;
+        lineBuffer += decoder.decode(value, { stream: true });
+
+        // Process complete NDJSON lines
+        const lines = lineBuffer.split("\n");
+        lineBuffer = lines.pop() || ""; // keep incomplete line in buffer
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const event = JSON.parse(line);
+            if (event.type === "chunk" && event.text) {
+              botResponse += event.text;
+            } else if (event.type === "done" && event.sources) {
+              botSources = event.sources;
+            }
+          } catch {
+            // Not valid JSON — treat as raw text fallback
+            botResponse += line;
+          }
+        }
 
         setChats((prev) => prev.map((c) => {
           if (c.id === targetChatId) {
             const newMsgs = [...c.messages];
-            newMsgs[newMsgs.length - 1] = { role: "bot", text: botResponse };
+            newMsgs[newMsgs.length - 1] = { role: "bot", text: botResponse, sources: botSources.length > 0 ? botSources : undefined };
             return { ...c, messages: newMsgs };
           }
           return c;
         }));
       }
 
+      // Process any remaining buffer
+      if (lineBuffer.trim()) {
+        try {
+          const event = JSON.parse(lineBuffer);
+          if (event.type === "chunk" && event.text) {
+            botResponse += event.text;
+          } else if (event.type === "done" && event.sources) {
+            botSources = event.sources;
+          }
+        } catch {
+          botResponse += lineBuffer;
+        }
+      }
+
+      // Final state update with sources
+      setChats((prev) => prev.map((c) => {
+        if (c.id === targetChatId) {
+          const newMsgs = [...c.messages];
+          newMsgs[newMsgs.length - 1] = { role: "bot", text: botResponse, sources: botSources.length > 0 ? botSources : undefined };
+          return { ...c, messages: newMsgs };
+        }
+        return c;
+      }));
+
       // Cache final messages
-      const finalMsgs = [...updatedMessages, { role: "bot" as const, text: botResponse }];
+      const finalMsgs = [...updatedMessages, { role: "bot" as const, text: botResponse, sources: botSources.length > 0 ? botSources : undefined }];
       if (sessionId) {
         localStorage.setItem(`cached_messages_${sessionId}`, JSON.stringify(finalMsgs));
       }

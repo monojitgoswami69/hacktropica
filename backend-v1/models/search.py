@@ -54,4 +54,11 @@ class QueryRequest(BaseModel):
 class ContextChunk(BaseModel):
     text: str
     source: str
-    score: float
+    title: str = ""
+    similarity: float = 0.0
+
+
+class TutorResponse(BaseModel):
+    """Structured response schema enforced on LLM output."""
+    answer: str = Field(description="The tutor's response text in markdown. Must NOT contain any source references.")
+    sources: List[str] = Field(description="List of exact source titles used to form the answer. Empty list if no sources were used.")

@@ -259,13 +259,15 @@ async def delete_document(
 @router.get("/documents/{document_id}/preview")
 async def get_document_preview(
     document_id: str,
+    request: Request,
     user=Depends(get_current_user),
     db=Depends(get_db),
     storage=Depends(get_storage_service),
 ):
     """
-    Return a publicly-accessible preview URL for the original file.
-    Prefers the permanent public R2 URL; falls back to a 1-hour presigned URL.
+    Return a preview URL for the document.
+    Returns a backend-proxied URL that streams the file directly,
+    avoiding R2 CORS/auth issues for browser-based PDF viewers.
     """
     doc = await db.db.documents.find_one({"_id": document_id})
     if not doc:
@@ -277,25 +279,71 @@ async def get_document_preview(
     if not storage:
         raise HTTPException(503, "File storage not configured")
 
-    # Prefer cached public URL from DB
-    public_url = doc.get("preview_url")
-    if not public_url:
-        public_url = storage.get_public_url(storage_key)
+    # Return a proxy URL through our backend
+    base_url = str(request.base_url).rstrip("/")
+    proxy_url = f"{base_url}/api/v1/documents/{document_id}/file"
 
-    if public_url:
-        return {
-            "preview_url": public_url,
-            "document_id": document_id,
-            "source": doc.get("source", ""),
-        }
-
-    # Fall back to presigned URL
-    presigned = await storage.get_presigned_url(storage_key, expires_in=3600)
     return {
-        "preview_url": presigned,
+        "preview_url": proxy_url,
         "document_id": document_id,
         "source": doc.get("source", ""),
     }
+
+
+@router.get("/documents/{document_id}/file")
+async def proxy_document_file(
+    document_id: str,
+    user=Depends(get_current_user),
+    db=Depends(get_db),
+    storage=Depends(get_storage_service),
+):
+    """
+    Proxy-stream the actual file bytes from R2.
+    This avoids CORS/auth issues since the browser fetches from our backend.
+    """
+    doc = await db.db.documents.find_one({"_id": document_id})
+    if not doc:
+        raise HTTPException(404, "Document not found")
+
+    storage_key = doc.get("storage_key")
+    if not storage_key:
+        raise HTTPException(404, "Original file not available")
+    if not storage:
+        raise HTTPException(503, "File storage not configured")
+
+    # Download from R2 and stream to client
+    try:
+        file_bytes = await storage.download(storage_key)
+    except Exception as exc:
+        logger.error("R2 download failed for %s: %s", storage_key, exc)
+        raise HTTPException(502, "Failed to retrieve file from storage")
+
+    # Determine content type from filename
+    source = doc.get("source", "file")
+    ext = source.rsplit(".", 1)[-1].lower() if "." in source else ""
+    content_type_map = {
+        "pdf": "application/pdf",
+        "png": "image/png",
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "gif": "image/gif",
+        "webp": "image/webp",
+        "svg": "image/svg+xml",
+        "txt": "text/plain",
+        "md": "text/markdown",
+        "csv": "text/csv",
+        "json": "application/json",
+    }
+    content_type = content_type_map.get(ext, "application/octet-stream")
+
+    return StreamingResponse(
+        iter([file_bytes]),
+        media_type=content_type,
+        headers={
+            "Content-Disposition": f'inline; filename="{source}"',
+            "Cache-Control": "private, max-age=3600",
+        },
+    )
 
 
 @router.get("/documents/{document_id}/download")
