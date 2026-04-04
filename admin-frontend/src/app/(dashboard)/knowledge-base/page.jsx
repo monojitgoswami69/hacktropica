@@ -175,7 +175,8 @@ export default function KnowledgeBasePage() {
           subject: doc.subject,
           chunks: doc.chunks || 0,
           uploadDate: doc.created_at || new Date().toISOString(),
-          download_url: doc.download_url || null,
+          download_url: doc.preview_url || doc.download_url || null,
+          preview_url: doc.preview_url || null,
           status: 'active',
         };
       });

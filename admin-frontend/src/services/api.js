@@ -185,8 +185,8 @@ export const knowledgeBaseApi = {
   },
 
   /**
-   * Fetch file bytes from Dropbox via backend and return a blob URL for preview
-   * Backend endpoint: GET /api/v1/documents/{document_id}/preview
+   * Fetch the R2 preview URL for a document from the backend.
+   * Backend returns JSON: { preview_url, document_id, source }
    */
   async preview(documentId) {
     const token = getToken();
@@ -197,15 +197,29 @@ export const knowledgeBaseApi = {
       headers,
     });
     if (!response.ok) throw new Error('Failed to load preview');
-    const blob = await response.blob();
-    return URL.createObjectURL(blob);
+    const data = await response.json();
+    return data.preview_url;
   },
 
   /**
-   * Get the direct preview URL (for embedding in iframes / img tags)
+   * Get the direct preview URL (calls the API to resolve the R2 link).
+   * Returns a promise — use with await.
    */
-  getPreviewUrl(documentId) {
-    return `${API_BASE_URL}/api/v1/documents/${documentId}/preview`;
+  async getPreviewUrl(documentId) {
+    const token = getToken();
+    const headers = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/documents/${documentId}/preview`, {
+        headers,
+      });
+      if (!response.ok) return null;
+      const data = await response.json();
+      return data.preview_url;
+    } catch {
+      return null;
+    }
   },
 
   /**

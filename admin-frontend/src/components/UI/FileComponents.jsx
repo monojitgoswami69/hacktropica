@@ -253,16 +253,16 @@ export function FilePreview({ doc, onClose, onSave, isArchived = false }) {
       try {
         const { api } = await import('../../services/api');
 
-        // For images and PDFs — fetch bytes from Dropbox via backend, get blob URL
+        // For images and PDFs — get the R2 preview URL from the backend
         if (isImage || isPDF) {
           if (doc.id) {
             try {
-              const blobUrl = await api.knowledgeBase.preview(doc.id);
-              if (isMounted) setContent(blobUrl);
+              const previewUrl = await api.knowledgeBase.preview(doc.id);
+              if (isMounted) setContent(previewUrl);
             } catch (err) {
-              console.warn('Blob preview failed, using direct URL:', err);
-              // Fallback: use the raw preview URL for direct embedding
-              if (isMounted) setContent(api.knowledgeBase.getPreviewUrl(doc.id));
+              console.warn('Preview URL fetch failed, using doc.preview_url:', err);
+              // Fallback: use the preview_url already on the doc object (if any)
+              if (isMounted) setContent(doc.preview_url || doc.download_url || null);
             }
           }
         } else if (isText || isCode) {
@@ -286,13 +286,7 @@ export function FilePreview({ doc, onClose, onSave, isArchived = false }) {
     }
 
     loadContent();
-    return () => { 
-      isMounted = false;
-      // Cleanup blob URLs
-      if (content && typeof content === 'string' && content.startsWith('blob:')) {
-        URL.revokeObjectURL(content);
-      }
-    };
+    return () => { isMounted = false; };
   }, [doc, isText, isCode, isImage, isPDF, isArchived]);
 
   // Handle escape key
