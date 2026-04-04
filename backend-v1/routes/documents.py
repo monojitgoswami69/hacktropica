@@ -15,6 +15,7 @@ from fastapi.responses import StreamingResponse
 from models.documents import IngestRequest, IngestResponse, DocumentInfo, DocumentListResponse
 from services.vector_store import ChunkMetadata
 from services.document_processor import DocumentProcessor
+from services.audit import log_audit
 from dependencies import (
     get_db, get_vector_store, get_embedding_service,
     get_current_user, get_storage_service,
@@ -154,7 +155,14 @@ async def ingest_document(
     await vs.add(vectors, chunks)
     timings["indexing_ms"] = round((time.perf_counter() - t) * 1000, 1)
 
-    # 8. Store document metadata in MongoDB
+    # 8. Build download URL (presigned URLs are generated on-demand, store key for lookup)
+    download_url = None
+    if preview_url and storage_key:
+        # Download URL is generated on-demand via /documents/{id}/download
+        # Store a flag that download is available
+        download_url = f"/api/v1/documents/{document_id}/download"
+
+    # 9. Store document metadata in MongoDB
     doc_record = {
         "_id": document_id,
         "source": body.source,
@@ -164,14 +172,21 @@ async def ingest_document(
         "subject": body.subject,
         "chunks": len(chunks),
         "uploaded_by": user["_id"],
+        "storage_key": storage_key or "",
+        "preview_url": preview_url or "",
+        "download_url": download_url or "",
         "created_at": datetime.utcnow(),
     }
-    if storage_key:
-        doc_record["storage_key"] = storage_key
-    if preview_url:
-        doc_record["preview_url"] = preview_url
 
     await db.db.documents.insert_one(doc_record)
+
+    # 10. Audit log
+    await log_audit(
+        db, action="document.create", user_id=user["_id"], user_email=user.get("email", ""),
+        role=user.get("role", ""), target_type="document", target_id=document_id,
+        details={"title": body.title, "source": body.source, "stream": body.stream,
+                 "subject": body.subject, "chunks": len(chunks)},
+    )
 
     timings["total_ms"] = round((time.perf_counter() - t0) * 1000, 1)
     logger.info("Ingested %s: %d chunks in %.0fms", body.source, len(chunks), timings["total_ms"])
@@ -200,7 +215,9 @@ async def list_documents(user=Depends(get_current_user), db=Depends(get_db)):
             stream=doc.get("stream"),
             subject=doc.get("subject"),
             chunks=doc.get("chunks", 0),
+            storage_key=doc.get("storage_key"),
             preview_url=doc.get("preview_url"),
+            download_url=doc.get("download_url"),
             created_at=doc.get("created_at", datetime.utcnow()),
         ))
     return DocumentListResponse(documents=docs, total=len(docs))
@@ -214,15 +231,26 @@ async def delete_document(
     vs=Depends(get_vector_store),
     storage=Depends(get_storage_service),
 ):
-    # Delete from R2
     doc = await db.db.documents.find_one({"_id": document_id})
-    if doc and doc.get("storage_key") and storage:
+    if not doc:
+        raise HTTPException(404, "Document not found")
+
+    # Delete from R2
+    if doc.get("storage_key") and storage:
         await storage.delete(doc["storage_key"])
 
     # Delete vectors
     deleted_chunks = await vs.delete_document(document_id)
     # Delete metadata
     await db.db.documents.delete_one({"_id": document_id})
+
+    # Audit log
+    await log_audit(
+        db, action="document.delete", user_id=user["_id"], user_email=user.get("email", ""),
+        role=user.get("role", ""), target_type="document", target_id=document_id,
+        details={"title": doc.get("title", ""), "source": doc.get("source", "")},
+    )
+
     return {"message": f"Deleted {deleted_chunks} chunks", "document_id": document_id}
 
 

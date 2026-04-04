@@ -8,6 +8,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from services.auth import AuthService
+from services.audit import log_audit
 from dependencies import get_db, get_vector_store, get_current_user, require_admin
 
 logger = logging.getLogger(__name__)
@@ -62,13 +63,12 @@ async def enroll_students(
             student_stream = row.get("stream", body.stream or "cse").strip()
             student_sem = row.get("sem", body.semester or "1").strip()
 
-            # Auth record (lean)
+            # Auth record (lean — no created_at)
             await db.db.student_auth.insert_one({
                 "_id": uid,
                 "email": email,
                 "password_hash": AuthService.hash_password("aot169"),
                 "role": "student",
-                "created_at": datetime.utcnow(),
             })
 
             # Profile record (metadata)
@@ -86,6 +86,14 @@ async def enroll_students(
             enrolled += 1
         except Exception as exc:
             errors.append(f"{email}: {exc}")
+
+    # Audit log
+    if enrolled > 0:
+        await log_audit(
+            db, action="student.enroll", user_id=user["_id"], user_email=user.get("email", ""),
+            role=user.get("role", ""), target_type="student",
+            details={"enrolled": enrolled, "skipped": skipped, "stream": body.stream or "cse"},
+        )
 
     return {
         "enrolled": enrolled,
@@ -144,6 +152,15 @@ async def set_curriculum(
         },
         upsert=True,
     )
+
+    # Audit log
+    await log_audit(
+        db, action="curriculum.update", user_id=user["_id"], user_email=user.get("email", ""),
+        role=user.get("role", ""), target_type="curriculum",
+        details={"stream": body.stream, "semester": body.semester,
+                 "subjects": [s.name for s in body.subjects]},
+    )
+
     return {"message": f"Curriculum updated for {body.stream} sem {body.semester}"}
 
 

@@ -33,7 +33,9 @@ class DocumentInfo(BaseModel):
     stream: Optional[str] = None
     subject: Optional[str] = None
     chunks: int = 0
+    storage_key: Optional[str] = None
     preview_url: Optional[str] = None
+    download_url: Optional[str] = None
     created_at: datetime
 
 

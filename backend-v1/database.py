@@ -86,18 +86,20 @@ class Database:
 
         # Documents
         await self.db.documents.create_index("created_at")
-
-        # Analytics
-        await self.db.analytics.create_index("date", unique=True)
+        await self.db.documents.create_index("uploaded_by")
 
         # Quiz results
         await self.db.quiz_results.create_index([("uid", 1), ("submitted_at", -1)])
 
         # Audit logs
-        await self.db.audit_logs.create_index("created_at")
+        await self.db.audit_logs.create_index("timestamp")
         await self.db.audit_logs.create_index("action")
+        await self.db.audit_logs.create_index("user_id")
 
-        # Query Stats (for analytics)
+        # Daily queries (date-wise hit counts)
+        await self.db.daily_queries.create_index("date", unique=True)
+
+        # Per-user query stats (for analytics)
         await self.db.query_stats.create_index("total_queries")
 
         # Curriculum

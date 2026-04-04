@@ -114,7 +114,7 @@ export default function ExamPreparationPage() {
       setLoadingHistory(true);
       setDocError(null);
       try {
-        console.log("[ExamPrep] Loading subjects and history from mock data");
+        console.log("[ExamPrep] Loading subjects and history from backend");
         const [docs, historyData] = await Promise.all([
           fetchDocuments(),
           getQuizHistory()

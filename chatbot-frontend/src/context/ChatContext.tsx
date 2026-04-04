@@ -1,8 +1,11 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, useRef, type ReactNode } from "react";
-import { fetchSessions, fetchSessionMessages, type ChatSession, streamQueryUrl, getIdToken, auth } from "@/lib/auth";
-import { type User } from "@/lib/auth";
+import {
+  fetchSessions, fetchSessionMessages, createSession,
+  streamQueryUrl, getIdToken, auth,
+  type ChatSession, type User,
+} from "@/lib/auth";
 
 export interface Message {
   role: "user" | "bot";
@@ -200,7 +203,16 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     let targetChatId = currentChatId;
     let newChatsState = [...chats];
 
+    // Resolve or create a backend session
+    let sessionId: string | undefined;
+
+    if (targetChatId) {
+      const existingChat = newChatsState.find((c) => c.id === targetChatId);
+      sessionId = existingChat?.sessionId;
+    }
+
     if (!targetChatId) {
+      // Create a new local chat, then a backend session
       targetChatId = Date.now().toString();
       const newChat: Chat = {
         id: targetChatId,
@@ -229,45 +241,77 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }));
 
     try {
-      // Mock backend session response
-      const returnedSessionId = `mock-session-${Date.now()}`;
-      if (!targetChat.sessionId) {
-        setChats((prev) => {
-          const updatedChats = prev.map((c) =>
-            c.id === targetChatId ? { ...c, sessionId: returnedSessionId, name: text.slice(0, 40) + (text.length > 40 ? "..." : "") } : c
-          );
-          if (user) {
-            localStorage.setItem(
-              `cached_sessions_${user.uid}`,
-              JSON.stringify(updatedChats.map((c) => ({ id: c.sessionId || c.id, name: c.name, pinned: Boolean(c.pinned) })))
+      // Create backend session if we don't have one
+      if (!sessionId) {
+        try {
+          const newSession = await createSession();
+          sessionId = newSession.session_id;
+          setChats((prev) => {
+            const updatedChats = prev.map((c) =>
+              c.id === targetChatId ? { ...c, sessionId, name: text.slice(0, 40) + (text.length > 40 ? "..." : "") } : c
             );
-          }
-          return updatedChats;
-        });
+            if (user) {
+              localStorage.setItem(
+                `cached_sessions_${user.uid}`,
+                JSON.stringify(updatedChats.map((c) => ({ id: c.sessionId || c.id, name: c.name, pinned: Boolean(c.pinned) })))
+              );
+            }
+            return updatedChats;
+          });
+        } catch (err) {
+          console.warn("Failed to create session, continuing without persistence:", err);
+        }
       }
 
+      // Add empty bot message placeholder
       setChats((prev) => prev.map((c) => c.id === targetChatId ? { ...c, messages: [...updatedMessages, { role: "bot", text: "" }] } : c));
 
-      // Mock streaming response
-      const mockResponseParams = [
-        "This is a mocked response.",
-        " Since you disconnected the backend, this message is generated entirely by the frontend.",
-        "\n\nHere are some things you can verify:",
-        "\n- The chat interface is working correctly.",
-        "\n- Authentication is still active if you are logged in.",
-        "\n- History is saved to localStorage.",
-        "\n\nHope this helps with frontend development!"
-      ];
-      
+      // Build query payload
+      const queryPayload: Record<string, unknown> = {
+        query: text,
+        top_k: 5,
+        history: historyPayload,
+      };
+      if (sessionId) queryPayload.session_id = sessionId;
+
+      // Add filters if provided
+      if (additionalFilters) {
+        const filters: Record<string, string> = {};
+        if (additionalFilters.document_id) filters.document_id = additionalFilters.document_id;
+        if (additionalFilters.subject) filters.subject = additionalFilters.subject;
+        if (Object.keys(filters).length > 0) queryPayload.filters = filters;
+      }
+
+      // Stream the response from the backend
+      const token = await getIdToken();
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
+      const response = await fetch(streamQueryUrl(), {
+        method: "POST",
+        headers,
+        body: JSON.stringify(queryPayload),
+        signal: abortController.signal,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "Unknown error");
+        throw new Error(`Server error ${response.status}: ${errorText}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("No readable stream");
+
+      const decoder = new TextDecoder();
       let botResponse = "";
 
-      for (const chunk of mockResponseParams) {
-        if (abortController.signal.aborted) {
-          const err = new Error("AbortError");
-          err.name = "AbortError";
-          throw err;
-        }
-        await new Promise(resolve => setTimeout(resolve, 500)); // Simulate delay
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
         botResponse += chunk;
 
         setChats((prev) => prev.map((c) => {
@@ -279,11 +323,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           return c;
         }));
       }
-      
-      const finalSessionId = returnedSessionId || targetChat.sessionId;
-      const updatedMsgs = [...updatedMessages, { role: "bot", text: botResponse }];
-      if (finalSessionId) {
-        localStorage.setItem(`cached_messages_${finalSessionId}`, JSON.stringify(updatedMsgs));
+
+      // Cache final messages
+      const finalMsgs = [...updatedMessages, { role: "bot" as const, text: botResponse }];
+      if (sessionId) {
+        localStorage.setItem(`cached_messages_${sessionId}`, JSON.stringify(finalMsgs));
       }
 
     } catch (err: unknown) {
@@ -297,7 +341,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             const newMsgs = [...c.messages];
             const lastMsg = newMsgs[newMsgs.length - 1];
             if (lastMsg?.role === "bot" && !lastMsg.text) {
-              newMsgs[newMsgs.length - 1] = { role: "bot", text: "Error: Could not fetch response." };
+              newMsgs[newMsgs.length - 1] = { role: "bot", text: "Error: Could not fetch response. " + (error.message || "") };
             } else if (lastMsg?.role === "bot") {
               newMsgs[newMsgs.length - 1] = { role: "bot", text: lastMsg.text + "\n\n(Connection error)" };
             } else {

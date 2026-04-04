@@ -36,14 +36,22 @@ router = APIRouter(prefix="/api/v1", tags=["search"])
 
 async def _track_query_stats(db, uid: str, search_results: list, vs) -> None:
     """
-    Fire-and-forget update of per-user query analytics.
-    Tracks: total_queries, by_subject, by_module, daily_queries.
-    Compatible with the analytics dashboard ported from v2.
+    Fire-and-forget update of per-user query analytics + global daily_queries.
+    Tracks: total_queries, by_subject, by_module, daily_queries (per-user).
+    Also increments the global daily_queries collection (date-wise hit counts).
     """
     try:
         ist = pytz.timezone("Asia/Kolkata")
         today = datetime.now(ist).strftime("%Y-%m-%d")
 
+        # ── Global daily queries (new collection) ─────────────────────
+        await db.db.daily_queries.update_one(
+            {"date": today},
+            {"$inc": {"count": 1}},
+            upsert=True,
+        )
+
+        # ── Per-user query stats (unchanged) ──────────────────────────
         inc_fields: Dict[str, int] = {
             "total_queries": 1,
             f"daily_queries.{today}": 1,

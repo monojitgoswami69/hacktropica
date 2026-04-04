@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from models.auth import LoginRequest, RegisterRequest, AuthResponse
+from services.audit import log_audit
 from dependencies import (
     get_db, get_auth_service, get_current_user,
     require_dashboard_scope, require_student_scope,
@@ -86,13 +87,12 @@ async def student_register(body: RegisterRequest, db=Depends(get_db), auth=Depen
     uid = str(uuid.uuid4()).replace("-", "")
     display_name = body.display_name or body.name or body.email.split("@")[0]
 
-    # Auth record (lean)
+    # Auth record (lean — no created_at)
     await db.db.student_auth.insert_one({
         "_id": uid,
         "email": body.email,
         "password_hash": auth.hash_password(body.password),
         "role": "student",
-        "created_at": datetime.utcnow(),
     })
 
     # Profile record (metadata, no password)
@@ -106,6 +106,12 @@ async def student_register(body: RegisterRequest, db=Depends(get_db), auth=Depen
         "roll": "",
         "created_at": datetime.utcnow(),
     })
+
+    # Audit log
+    await log_audit(
+        db, action="user.register", user_id=uid, user_email=body.email,
+        role="student", target_type="student", target_id=uid,
+    )
 
     token = auth.create_access_token({
         "uid": uid, "email": body.email, "role": "student", "scope": "student",

@@ -32,11 +32,7 @@ export default function LoginPage() {
       // onAuthChange will handle redirect
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Authentication failed";
-      const cleaned = msg
-        .replace("Firebase: ", "")
-        .replace(/\(auth\/.*\)\.?/, "")
-        .trim();
-      setError(cleaned || "Invalid email or password");
+      setError(msg || "Invalid email or password");
     } finally {
       setIsLoading(false);
     }
@@ -48,9 +44,8 @@ export default function LoginPage() {
     try {
       await loginWithGoogle();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Google sign-in failed";
-      const cleaned = msg.replace("Firebase: ", "").replace(/\(auth\/.*\)\.?/, "").trim();
-      setError(cleaned || "Google sign-in failed");
+      const msg = err instanceof Error ? err.message : "Google sign-in is not available";
+      setError(msg);
     } finally {
       setIsLoading(false);
     }
