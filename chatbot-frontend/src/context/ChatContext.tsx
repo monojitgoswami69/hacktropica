@@ -1,0 +1,342 @@
+"use client";
+
+import React, { createContext, useContext, useState, useEffect, useRef, type ReactNode } from "react";
+import { fetchSessions, fetchSessionMessages, type ChatSession, streamQueryUrl, getIdToken, auth } from "@/lib/auth";
+import { type User } from "@/lib/auth";
+
+export interface Message {
+  role: "user" | "bot";
+  text: string;
+}
+
+export interface Chat {
+  id: string;
+  name: string;
+  messages: Message[];
+  sessionId?: string;
+  pinned?: boolean;
+}
+
+interface ChatContextType {
+  chats: Chat[];
+  currentChatId: string | null;
+  isStreaming: boolean;
+  handleNewChat: () => void;
+  handleSelectChat: (id: string) => Promise<void>;
+  handleSendMessage: (text: string, user: User | null, additionalFilters?: { document_id?: string; subject?: string }) => Promise<void>;
+  initializeChats: (userUid: string) => void;
+  abortStream: () => void;
+  handlePinChat: (id: string) => void;
+  handleShareChat: (id: string) => Promise<boolean>;
+  handleDeleteChat: (id: string) => void;
+}
+
+const ChatContext = createContext<ChatContextType | undefined>(undefined);
+
+export function ChatProvider({ children }: { children: ReactNode }) {
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [currentChatId, setCurrentChatId] = useState<string | null>(null);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const sortChatsByPinned = (list: Chat[]) => {
+    return [...list].sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)));
+  };
+
+  const persistSessionsCache = (chatList: Chat[]) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    localStorage.setItem(
+      `cached_sessions_${uid}`,
+      JSON.stringify(chatList.map((c) => ({ id: c.sessionId || c.id, name: c.name, pinned: Boolean(c.pinned) })))
+    );
+  };
+
+  const initializeChats = (userUid: string) => {
+    const cachedSessions = localStorage.getItem(`cached_sessions_${userUid}`);
+    if (cachedSessions) {
+      try {
+        const parsed = JSON.parse(cachedSessions);
+        const loadedInitial = parsed.map((s: { id: string; name: string; pinned?: boolean }) => ({
+          id: s.id,
+          name: s.name,
+          messages: [],
+          sessionId: s.id,
+          pinned: Boolean(s.pinned),
+        }));
+        setChats(sortChatsByPinned(loadedInitial));
+      } catch {
+        // ignore
+      }
+    }
+
+    fetchSessions()
+      .then((sessions: ChatSession[]) => {
+        if (sessions.length > 0) {
+          const loadedChats: Chat[] = sessions.map((s) => ({
+            id: s.session_id,
+            name: s.title,
+            messages: [],
+            sessionId: s.session_id,
+            pinned: false,
+          }));
+          
+          setChats((prev) => {
+            const newChats = [...loadedChats];
+            prev.forEach(p => {
+              const match = newChats.find(n => n.id === p.id);
+              if (match && p.messages.length > 0) {
+                match.messages = p.messages;
+              }
+            });
+            return sortChatsByPinned(newChats);
+          });
+
+          localStorage.setItem(
+            `cached_sessions_${userUid}`,
+            JSON.stringify(loadedChats.map((c) => ({ id: c.id, name: c.name, pinned: Boolean(c.pinned) })))
+          );
+        }
+      })
+      .catch(() => console.warn("Could not load sessions"));
+  };
+
+  const handlePinChat = (id: string) => {
+    setChats((prev) => {
+      const updated = prev.map((c) => (c.id === id ? { ...c, pinned: !c.pinned } : c));
+      const sorted = sortChatsByPinned(updated);
+      persistSessionsCache(sorted);
+      return sorted;
+    });
+  };
+
+  const handleShareChat = async (id: string) => {
+    const chat = chats.find((c) => c.id === id);
+    if (!chat) return false;
+
+    const transcript = chat.messages
+      .map((m) => `${m.role === "user" ? "You" : "Assistant"}: ${m.text}`)
+      .join("\n\n");
+    const shareText = `${chat.name}\n\n${transcript || "No messages yet."}`;
+
+    try {
+      await navigator.clipboard.writeText(shareText);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const handleDeleteChat = (id: string) => {
+    if (isStreaming && currentChatId === id && abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      setIsStreaming(false);
+    }
+
+    setChats((prev) => {
+      const target = prev.find((c) => c.id === id);
+      if (target?.sessionId) {
+        localStorage.removeItem(`cached_messages_${target.sessionId}`);
+      }
+      const filtered = prev.filter((c) => c.id !== id);
+      persistSessionsCache(filtered);
+      return filtered;
+    });
+
+    setCurrentChatId((prev) => (prev === id ? null : prev));
+  };
+
+  const handleNewChat = () => {
+    if (isStreaming && abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      setIsStreaming(false);
+    }
+    setCurrentChatId(null);
+  };
+
+  const handleSelectChat = async (id: string) => {
+    if (isStreaming && abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      setIsStreaming(false);
+    }
+    setCurrentChatId(id);
+
+    setChats((currentChatsList) => {
+      const chat = currentChatsList.find((c) => c.id === id);
+      if (chat?.sessionId && chat.messages.length === 0) {
+        const cachedMsgs = localStorage.getItem(`cached_messages_${chat.sessionId}`);
+        if (cachedMsgs) {
+          try {
+            const parsedMsgs = JSON.parse(cachedMsgs);
+            setChats((prev) => prev.map((c) => (c.id === id ? { ...c, messages: parsedMsgs } : c)));
+          } catch { }
+        }
+
+        fetchSessionMessages(chat.sessionId).then((msgs) => {
+          const formatted: Message[] = msgs.map((m) => ({
+            role: m.role === "user" ? "user" : "bot",
+            text: m.content,
+          }));
+          localStorage.setItem(`cached_messages_${chat.sessionId}`, JSON.stringify(formatted));
+          setChats((prev) =>
+            prev.map((c) => (c.id === id ? { ...c, messages: formatted } : c))
+          );
+        }).catch(() => console.warn("Could not load messages for session", chat?.sessionId));
+      }
+      return currentChatsList;
+    });
+  };
+
+  const abortStream = () => {
+    if (isStreaming && abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      setIsStreaming(false);
+    }
+  };
+
+  const handleSendMessage = async (text: string, user: User | null, additionalFilters?: { document_id?: string; subject?: string }) => {
+    if (isStreaming || !text.trim()) return;
+
+    let targetChatId = currentChatId;
+    let newChatsState = [...chats];
+
+    if (!targetChatId) {
+      targetChatId = Date.now().toString();
+      const newChat: Chat = {
+        id: targetChatId,
+        name: text.slice(0, 40) + (text.length > 40 ? "..." : ""),
+        messages: [],
+        pinned: false,
+      };
+      newChatsState = [newChat, ...chats];
+      setChats(newChatsState);
+      setCurrentChatId(targetChatId);
+    }
+
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+    setIsStreaming(true);
+
+    const targetChat = newChatsState.find((c) => c.id === targetChatId);
+    if (!targetChat) return;
+
+    const updatedMessages: Message[] = [...targetChat.messages, { role: "user", text }];
+    setChats((prev) => prev.map((c) => c.id === targetChatId ? { ...c, messages: updatedMessages } : c));
+
+    const historyPayload = updatedMessages.slice(0, -1).map((m) => ({
+      role: m.role === "user" ? "user" : "assistant",
+      content: m.text,
+    }));
+
+    try {
+      // Mock backend session response
+      const returnedSessionId = `mock-session-${Date.now()}`;
+      if (!targetChat.sessionId) {
+        setChats((prev) => {
+          const updatedChats = prev.map((c) =>
+            c.id === targetChatId ? { ...c, sessionId: returnedSessionId, name: text.slice(0, 40) + (text.length > 40 ? "..." : "") } : c
+          );
+          if (user) {
+            localStorage.setItem(
+              `cached_sessions_${user.uid}`,
+              JSON.stringify(updatedChats.map((c) => ({ id: c.sessionId || c.id, name: c.name, pinned: Boolean(c.pinned) })))
+            );
+          }
+          return updatedChats;
+        });
+      }
+
+      setChats((prev) => prev.map((c) => c.id === targetChatId ? { ...c, messages: [...updatedMessages, { role: "bot", text: "" }] } : c));
+
+      // Mock streaming response
+      const mockResponseParams = [
+        "This is a mocked response.",
+        " Since you disconnected the backend, this message is generated entirely by the frontend.",
+        "\n\nHere are some things you can verify:",
+        "\n- The chat interface is working correctly.",
+        "\n- Authentication is still active if you are logged in.",
+        "\n- History is saved to localStorage.",
+        "\n\nHope this helps with frontend development!"
+      ];
+      
+      let botResponse = "";
+
+      for (const chunk of mockResponseParams) {
+        if (abortController.signal.aborted) {
+          const err = new Error("AbortError");
+          err.name = "AbortError";
+          throw err;
+        }
+        await new Promise(resolve => setTimeout(resolve, 500)); // Simulate delay
+        botResponse += chunk;
+
+        setChats((prev) => prev.map((c) => {
+          if (c.id === targetChatId) {
+            const newMsgs = [...c.messages];
+            newMsgs[newMsgs.length - 1] = { role: "bot", text: botResponse };
+            return { ...c, messages: newMsgs };
+          }
+          return c;
+        }));
+      }
+      
+      const finalSessionId = returnedSessionId || targetChat.sessionId;
+      const updatedMsgs = [...updatedMessages, { role: "bot", text: botResponse }];
+      if (finalSessionId) {
+        localStorage.setItem(`cached_messages_${finalSessionId}`, JSON.stringify(updatedMsgs));
+      }
+
+    } catch (err: unknown) {
+      const error = err as Error;
+      if (error.name === "AbortError") {
+        console.log("Stream aborted");
+      } else {
+        console.error("Stream error:", error);
+        setChats((prev) => prev.map((c) => {
+          if (c.id === targetChatId) {
+            const newMsgs = [...c.messages];
+            const lastMsg = newMsgs[newMsgs.length - 1];
+            if (lastMsg?.role === "bot" && !lastMsg.text) {
+              newMsgs[newMsgs.length - 1] = { role: "bot", text: "Error: Could not fetch response." };
+            } else if (lastMsg?.role === "bot") {
+              newMsgs[newMsgs.length - 1] = { role: "bot", text: lastMsg.text + "\n\n(Connection error)" };
+            } else {
+              newMsgs.push({ role: "bot", text: "Error: Could not fetch response." });
+            }
+            return { ...c, messages: newMsgs };
+          }
+          return c;
+        }));
+      }
+    } finally {
+      setIsStreaming(false);
+      abortControllerRef.current = null;
+    }
+  };
+
+  return (
+    <ChatContext.Provider value={{
+      chats,
+      currentChatId,
+      isStreaming,
+      handleNewChat,
+      handleSelectChat,
+      handleSendMessage,
+      initializeChats,
+      abortStream,
+      handlePinChat,
+      handleShareChat,
+      handleDeleteChat,
+    }}>
+      {children}
+    </ChatContext.Provider>
+  );
+}
+
+export function useChat() {
+  const context = useContext(ChatContext);
+  if (context === undefined) {
+    throw new Error("useChat must be used within a ChatProvider");
+  }
+  return context;
+}
