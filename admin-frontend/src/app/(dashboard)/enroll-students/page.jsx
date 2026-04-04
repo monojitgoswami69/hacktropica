@@ -23,14 +23,13 @@ export default function EnrollStudentsPage() {
       const text = e.target.result;
       const delimiter = fileToParse.name.endsWith('.tsv') ? '\t' : ',';
       
-      // Basic CSV parsing handle simple cases without quotes for now, robust enough for preview
       const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
       if (lines.length > 0) {
         const parsedHeaders = lines[0].split(delimiter).map(h => h.trim());
         setHeaders(parsedHeaders);
         
         const dataRows = [];
-        for (let i = 1; i < Math.min(lines.length, 51); i++) { // Limit preview to 50 rows
+        for (let i = 1; i < Math.min(lines.length, 51); i++) {
           const values = lines[i].split(delimiter).map(v => v.trim());
           const rowObj = {};
           parsedHeaders.forEach((header, index) => {
@@ -111,7 +110,7 @@ export default function EnrollStudentsPage() {
         >
           <div className="flex items-start justify-between mb-6">
             <div>
-              <div className="flex items-center gap-3 mb-2">
+              <div className="flex items-center action gap-3 mb-2">
                 <div className="w-12 h-12 rounded-xl bg-indigo-100 flex items-center justify-center">
                   <Users className="w-6 h-6 text-indigo-600" />
                 </div>

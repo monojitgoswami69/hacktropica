@@ -32,7 +32,6 @@ const navItems = [
   { id: 'add-document', label: 'Add Document', path: '/add-document', icon: FilePlus, roles: ['superuser', 'admin', 'hod', 'faculty'] },
   { id: 'add-text', label: 'Add Text', path: '/add-text', icon: Type, roles: ['superuser', 'admin', 'hod', 'faculty'] },
   { id: 'student-records', label: 'Student Records', path: '/students', icon: Users, roles: ['admin', 'superuser'] },
-  { id: 'enroll-students', label: 'Enroll Students', path: '/enroll-students', icon: Users, roles: ['admin', 'superuser'] },
   { id: 'manage-curriculum', label: 'Manage Curriculum', path: '/manage-curriculum', icon: Library, roles: ['admin', 'superuser'] }
 ];
 

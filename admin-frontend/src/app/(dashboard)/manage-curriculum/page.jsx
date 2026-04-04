@@ -8,14 +8,12 @@ import {
   Plus,
   Trash2,
   X,
-  Check,
-  BookOpen,
-  GraduationCap,
-  Layers,
-  ChevronRight,
-  BookCopy,
-  PlusCircle,
-  Save
+  Save,
+  BookMarked,
+  MoreHorizontal,
+  ArrowRight,
+  ChevronDown,
+  Lock
 } from "lucide-react";
 import { cn } from "../../../utils/helpers";
 import RoleProtectedRoute from '../../../components/RoleProtectedRoute';
@@ -172,17 +170,20 @@ export default function ManageCurriculumPage() {
 
   if (loading) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center min-h-[70vh]">
-        <div className="w-12 h-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-4"></div>
-        <p className="text-neutral-500 font-medium tracking-wide">Loading Curriculum...</p>
-      </div>
+      <RoleProtectedRoute requiredRoles={['admin', 'superuser']} routeName="manage-curriculum">
+        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-neutral-50 via-white to-neutral-50">
+          <div className="text-center">
+            <div className="w-12 h-12 rounded-full border-2 border-neutral-200 border-t-indigo-600 animate-spin mx-auto mb-4"></div>
+            <p className="text-neutral-600 font-medium text-sm">Initializing curriculum space...</p>
+          </div>
+        </div>
+      </RoleProtectedRoute>
     );
   }
 
   const streams = Object.keys(curriculum);
   let semesters = selectedStream && curriculum[selectedStream] ? Object.keys(curriculum[selectedStream]) : [];
-  
-  // Sort semesters logically
+
   semesters.sort((a, b) => {
     const numA = a.match(/sem\s+(\d+)/i) ? parseInt(a.match(/sem\s+(\d+)/i)[1]) : 0;
     const numB = b.match(/sem\s+(\d+)/i) ? parseInt(b.match(/sem\s+(\d+)/i)[1]) : 0;
@@ -191,221 +192,255 @@ export default function ManageCurriculumPage() {
   });
 
   return (
-      <RoleProtectedRoute requiredRoles={['admin', 'superuser']} routeName="manage-curriculum">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 h-full overflow-y-auto bg-neutral-50 min-h-screen">
-          
-          {/* Header Section */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-            <div>
-              <h1 className="text-3xl font-extrabold text-neutral-900 tracking-tight flex items-center gap-3">
-                <BookCopy className="w-8 h-8 text-indigo-600" />
-                Curriculum Manager
-              </h1>
-              <p className="text-sm text-neutral-500 mt-2 font-medium max-w-2xl">
-                Design and organize your academic structures. Manage streams, semesters, and subjects globally.
-              </p>
-            </div>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="flex items-center gap-2 bg-indigo-600 text-white px-6 py-2.5 rounded-xl text-sm font-semibold shadow-sm hover:bg-indigo-700 hover:shadow transition-all disabled:opacity-70 disabled:cursor-not-allowed"
-        >
-          {saving ? (
-            <span className="animate-pulse flex items-center gap-2"><Save className="w-4 h-4 animate-spin"/> Saving...</span>
-          ) : (
-            <>
-              <Save className="w-4 h-4" /> Save Changes
-            </>
-          )}
-        </button>
-      </div>
+    <RoleProtectedRoute requiredRoles={['admin', 'superuser']} routeName="manage-curriculum">
+      <div className="w-full h-full p-1 md:p-2 flex flex-col overflow-hidden">
+        <div className="flex-1 bg-white rounded-2xl border border-neutral-200/80 shadow-sm overflow-hidden flex flex-col">
+          {/* Header Bar */}
+          <div className="border-b border-neutral-200/80 bg-white px-4 md:px-5 py-3 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-neutral-900">Academic Curriculum</h1>
+            <p className="text-sm text-neutral-500 mt-0.5">Manage streams, semesters, and course subjects</p>
+          </div>
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={handleSave}
+            disabled={saving}
+            className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-semibold text-sm shadow-lg hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+          >
+            <Save className="w-4 h-4" />
+            {saving ? "Publishing..." : "Publish"}
+          </motion.button>
+        </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
-        
-        {/* Left Column: Streams Sidebar */}
-        <div className="xl:col-span-3 flex flex-col gap-4">
-          <div className="bg-white rounded-2xl shadow-sm border border-neutral-200/60 overflow-hidden">
-            <div className="p-4 border-b border-neutral-100 bg-neutral-50/50 flex items-center gap-2">
-              <Layers className="w-4 h-4 text-indigo-600" />
-              <h2 className="text-xs font-bold text-neutral-700 uppercase tracking-widest">Active Streams</h2>
+        {/* Main Content */}
+        <div className="flex-1 overflow-hidden flex gap-0">
+          {/* Left Sidebar - Streams Navigation */}
+          <div className="w-64 border-r border-neutral-200/80 bg-white/50 backdrop-blur-sm flex flex-col overflow-hidden">
+            <div className="px-4 py-3 border-b border-neutral-200/50">
+              <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500">Streams</p>
             </div>
-            
-            <div className="p-3 flex flex-col gap-1.5">
-              {streams.map((str) => (
-                <button
-                  key={str}
-                  onClick={() => setSelectedStream(str)}
+
+            <div className="flex-1 overflow-y-auto space-y-1 p-3">
+              {streams.map((stream) => (
+                <motion.button
+                  key={stream}
+                  whileHover={{ x: 2 }}
+                  onClick={() => setSelectedStream(stream)}
                   className={cn(
-                    "group flex items-center justify-between px-4 py-3 text-sm rounded-xl transition-all duration-200 text-left",
-                    selectedStream === str
-                      ? "bg-indigo-50 border border-indigo-100 text-indigo-700 font-semibold shadow-sm"
-                      : "bg-transparent border border-transparent text-neutral-600 hover:bg-neutral-50 hover:border-neutral-200"
+                    "w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all relative group",
+                    selectedStream === stream
+                      ? "bg-indigo-100 text-indigo-900 shadow-sm ring-1 ring-indigo-200"
+                      : "text-neutral-700 hover:bg-neutral-100"
                   )}
                 >
-                  <span className="uppercase tracking-wider truncate mr-2">{str}</span>
-                  <div className="flex items-center gap-2">
-                    {selectedStream === str && <ChevronRight className="w-4 h-4 text-indigo-500" />}
-                    <Trash2
+                  <div className="flex items-center justify-between">
+                    <span className="capitalize truncate">{stream}</span>
+                    <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        removeStream(str);
+                        removeStream(stream);
                       }}
-                      className="w-4 h-4 opacity-0 group-hover:opacity-100 text-neutral-400 hover:text-red-500 transition-opacity"
-                    />
-                  </div>
-                </button>
-              ))}
-
-              <div className="mt-4 px-1 group">
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="Add New Stream..."
-                    className="w-full pl-4 pr-10 py-2.5 text-sm bg-neutral-50 border border-neutral-200 rounded-xl focus:bg-white focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 outline-none transition-all uppercase tracking-wider text-neutral-700 placeholder:text-neutral-400 placeholder:capitalize"
-                    value={newStreamName}
-                    onChange={(e) => setNewStreamName(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && addStream()}
-                  />
-                  <button 
-                    onClick={addStream} 
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-neutral-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                  >
-                    <PlusCircle className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Right Column: Semesters & Subjects */}
-        <div className="xl:col-span-9">
-          {selectedStream ? (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} key={selectedStream}>
-              
-              <div className="bg-white rounded-2xl shadow-sm border border-neutral-200/60 p-6 mb-8">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <GraduationCap className="w-7 h-7 text-indigo-600 bg-indigo-50 p-1.5 rounded-lg" />
-                    <div>
-                      <h2 className="text-2xl font-bold text-neutral-800 uppercase tracking-widest truncate">
-                        {selectedStream} Environment
-                      </h2>
-                      <p className="text-sm text-neutral-500 mt-0.5">Manage semesters and syllabus for this stream</p>
-                    </div>
-                  </div>
-                  
-                  <div className="flex flex-col sm:flex-row items-center gap-3">
-                    <button
-                      onClick={addSemester}
-                      className="flex items-center gap-2 bg-white border border-indigo-200 text-indigo-700 px-5 py-2.5 rounded-xl text-sm font-semibold shadow-sm hover:bg-indigo-50 hover:border-indigo-300 transition-all"
+                      className="opacity-0 group-hover:opacity-100 text-neutral-400 hover:text-red-600 transition-all p-1"
                     >
-                      <Plus className="w-4 h-4" /> Add Semester
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
-                </div>
-              </div>
+                </motion.button>
+              ))}
+            </div>
 
-              {/* Semesters Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <AnimatePresence mode="popLayout">
-                  {semesters.map((sem) => (
-                    <motion.div 
-                      layout 
-                      initial={{ opacity: 0, scale: 0.95 }} 
-                      animate={{ opacity: 1, scale: 1 }} 
-                      exit={{ opacity: 0, scale: 0.95 }} 
-                      key={sem} 
-                      className="bg-white rounded-2xl shadow-sm border border-neutral-200/60 overflow-hidden flex flex-col group/card hover:border-indigo-200 hover:shadow-md transition-all duration-300"
+            <div className="border-t border-neutral-200/50 p-3">
+              <input
+                type="text"
+                placeholder="New stream..."
+                value={newStreamName}
+                onChange={(e) => setNewStreamName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && addStream()}
+                className="w-full px-3 py-2 text-sm bg-white border border-neutral-200 rounded-lg placeholder:text-neutral-400 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 outline-none transition-all"
+              />
+              <button
+                onClick={addStream}
+                className="w-full mt-2 flex items-center justify-center gap-2 bg-indigo-50 text-indigo-700 px-3 py-2 rounded-lg text-sm font-medium hover:bg-indigo-100 transition-all"
+              >
+                <Plus className="w-4 h-4" /> Add Stream
+              </button>
+            </div>
+          </div>
+
+          {/* Right Content Area */}
+          <div className="flex-1 overflow-auto">
+            {selectedStream ? (
+              <motion.div
+                key={selectedStream}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.2 }}
+                className="h-full w-full p-3 md:p-4"
+              >
+                {/* Stream Header Card */}
+                <div className="mb-4 bg-white rounded-2xl border border-neutral-200/80 p-4 shadow-sm">
+                  <div className="flex items-start justify-between mb-4">
+                    <div>
+                      <h2 className="text-2xl font-bold text-neutral-900 capitalize">{selectedStream} Stream</h2>
+                      <p className="text-neutral-600 text-sm mt-1">Configure semesters and course structure</p>
+                    </div>
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      onClick={addSemester}
+                      className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-lg font-medium text-sm hover:bg-indigo-700 shadow-sm transition-all"
                     >
-                      <div className="px-5 py-4 border-b border-neutral-100 bg-neutral-50/50 flex items-center justify-between group-hover/card:bg-indigo-50/30 transition-colors">
-                        <h3 className="text-base font-bold text-neutral-800 capitalize tracking-wide flex items-center gap-2">
-                          <BookOpen className="w-4 h-4 text-indigo-500" />
-                          {sem}
-                        </h3>
-                        <button
-                          onClick={() => removeSem(sem)}
-                          className="p-1.5 text-neutral-400 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover/card:opacity-100 transition-all"
-                          title="Remove Semester"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
+                      <Plus className="w-4 h-4" /> Semester
+                    </motion.button>
+                  </div>
+                  
+                  <div className="flex gap-3 pt-4 border-t border-neutral-100">
+                    <div className="flex-1">
+                      <p className="text-xs font-semibold text-neutral-500 uppercase">Semesters</p>
+                      <p className="text-2xl font-bold text-neutral-900 mt-1">{semesters.length}</p>
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-xs font-semibold text-neutral-500 uppercase">Courses</p>
+                      <p className="text-2xl font-bold text-neutral-900 mt-1">
+                        {semesters.reduce((sum, sem) => {
+                          const subjectCount = curriculum[selectedStream][sem]?.filter(s => s !== "NA").length || 0;
+                          return sum + subjectCount;
+                        }, 0)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
 
-                      <div className="p-5 flex-1 flex flex-col gap-3">
-                        <div className="flex flex-col gap-2 mb-2 w-full">
-                          {curriculum[selectedStream][sem].map((sub) => (
-                            <div
-                              key={sub}
-                              className={cn(
-                                "group/sub flex items-center gap-1.5 text-xs font-semibold py-2 px-3 rounded-xl border transition-all justify-between w-full",
-                                sub === "NA"
-                                  ? "bg-amber-50 border-amber-200 text-amber-700 justify-center text-center"
-                                  : "bg-neutral-50 border-neutral-200 text-neutral-700 hover:bg-neutral-100 hover:border-neutral-300"
-                              )}
-                            >
-                              <span className="capitalize truncate max-w-[85%]">{sub === "NA" ? "Empty Semester" : sub}</span>
-                              {sub !== "NA" && (
-                                <button
-                                  onClick={() => removeSubject(sem, sub)}
-                                  className="text-neutral-400 hover:text-red-500 hover:bg-red-50 rounded-full p-1 transition-colors flex-shrink-0"
-                                >
-                                  <X className="w-3 h-3" />
-                                </button>
+                {/* Semesters Grid */}
+                {semesters.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                    <AnimatePresence mode="popLayout">
+                      {semesters.map((sem) => {
+                        const subjects = curriculum[selectedStream][sem] || [];
+                        const realSubjects = subjects.filter(s => s !== "NA");
+
+                        return (
+                          <motion.div
+                            layout
+                            key={sem}
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -20 }}
+                            className="bg-white rounded-xl border border-neutral-200/80 shadow-sm overflow-hidden flex flex-col group hover:shadow-md transition-all h-[300px]"
+                          >
+                            {/* Card Header */}
+                            <div className="px-5 py-4 bg-gradient-to-r from-indigo-50 to-transparent border-b border-neutral-200/50 flex items-center justify-between">
+                              <div className="flex items-center action gap-3">
+                                <div className="w-2 h-6 rounded-full bg-indigo-500"></div>
+                                <div>
+                                  <h3 className="font-bold text-neutral-900 capitalize">{sem}</h3>
+                                  <p className="text-xs text-neutral-500 mt-0.5">{realSubjects.length} course{realSubjects.length !== 1 ? "s" : ""}</p>
+                                </div>
+                              </div>
+                              <motion.button
+                                whileHover={{ rotate: 90 }}
+                                onClick={() => removeSem(sem)}
+                                className="p-1.5 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </motion.button>
+                            </div>
+
+                            {/* Courses List */}
+                            <div className="flex-1 px-5 py-4 space-y-2 overflow-y-auto show-scrollbar">
+                              {realSubjects.length > 0 ? (
+                                realSubjects.map((sub, idx) => (
+                                  <motion.div
+                                    key={sub}
+                                    initial={{ opacity: 0, x: -10 }}
+                                    animate={{ opacity: 1, x: 0 }}
+                                    transition={{ delay: idx * 0.05 }}
+                                    className="group/item flex items-center gap-2 bg-neutral-50 px-3 py-2.5 rounded-lg border border-neutral-200/50 hover:border-indigo-200 hover:bg-indigo-50 transition-all"
+                                  >
+                                    <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 flex-shrink-0"></div>
+                                    <span className="text-sm font-medium text-neutral-700 capitalize truncate flex-1">{sub}</span>
+                                    <button
+                                      onClick={() => removeSubject(sem, sub)}
+                                      className="p-1 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded opacity-0 group-hover/item:opacity-100 transition-all flex-shrink-0"
+                                    >
+                                      <X className="w-3 h-3" />
+                                    </button>
+                                  </motion.div>
+                                ))
+                              ) : (
+                                <div className="py-6 text-center">
+                                  <BookMarked className="w-8 h-8 text-neutral-300 mx-auto mb-2" />
+                                  <p className="text-xs text-neutral-500 font-medium">No courses added</p>
+                                </div>
                               )}
                             </div>
-                          ))}
-                        </div>
 
-                        {/* Add Subject Input */}
-                        <div className="mt-auto pt-4 relative border-t border-neutral-100">
-                          <input
-                            type="text"
-                            placeholder="Add a subject..."
-                            value={subjectInputs[sem] || ""}
-                            onChange={(e) => handleSubjectInputChange(sem, e.target.value)}
-                            onKeyDown={(e) => handleSubjectInputKeyDown(e, sem)}
-                            className="w-full text-sm bg-neutral-50 border border-neutral-200 rounded-lg pl-3 pr-8 py-2 focus:bg-white focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 outline-none transition-all placeholder:text-neutral-400"
-                          />
-                          <button
-                            onClick={() => {
-                              if (subjectInputs[sem]?.trim()) {
-                                addSubject(sem, subjectInputs[sem]);
-                              }
-                            }}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 mt-2 p-1 text-neutral-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
-                          >
-                            <Plus className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
-                
-                {semesters.length === 0 && (
-                  <div className="col-span-full py-12 flex flex-col items-center justify-center text-center border-2 border-dashed border-neutral-200 rounded-2xl bg-neutral-50/50">
-                    <BookOpen className="w-12 h-12 text-neutral-300 mb-3" />
-                    <h3 className="text-lg font-semibold text-neutral-700 mb-1">No semesters found</h3>
-                    <p className="text-sm text-neutral-500 max-w-sm">Get started by creating a new semester for this stream using the input field above.</p>
+                            {/* Add Course Input */}
+                            <div className="px-5 py-3 border-t border-neutral-200/50 bg-neutral-50/50">
+                              <div className="flex action gap-2">
+                                <input
+                                  type="text"
+                                  placeholder="Add course..."
+                                  value={subjectInputs[sem] || ""}
+                                  onChange={(e) => handleSubjectInputChange(sem, e.target.value)}
+                                  onKeyDown={(e) => handleSubjectInputKeyDown(e, sem)}
+                                  className="flex-1 px-3 py-2 text-sm bg-white border border-neutral-200 rounded-lg placeholder:text-neutral-400 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 outline-none transition-all"
+                                />
+                                <motion.button
+                                  whileHover={{ scale: 1.05 }}
+                                  whileTap={{ scale: 0.95 }}
+                                  onClick={() => {
+                                    if (subjectInputs[sem]?.trim()) {
+                                      addSubject(sem, subjectInputs[sem]);
+                                    }
+                                  }}
+                                  className="px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-all"
+                                >
+                                  <Plus className="w-4 h-4" />
+                                </motion.button>
+                              </div>
+                            </div>
+                          </motion.div>
+                        );
+                      })}
+                    </AnimatePresence>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-16 text-center">
+                    <div className="w-16 h-16 bg-neutral-100 rounded-2xl flex items-center justify-center mb-4">
+                      <BookMarked className="w-8 h-8 text-neutral-400" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-neutral-900 mb-1">No semesters created</h3>
+                    <p className="text-neutral-600 text-sm max-w-sm mb-6">
+                      Start building your curriculum by creating your first semester structure.
+                    </p>
+                    <button
+                      onClick={addSemester}
+                      className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-lg font-medium hover:bg-indigo-700 transition-all"
+                    >
+                      <Plus className="w-4 h-4" /> Create First Semester
+                    </button>
                   </div>
                 )}
+              </motion.div>
+            ) : (
+              <div className="h-full flex items-center justify-center">
+                <div className="text-center max-w-md">
+                  <div className="w-20 h-20 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <BookMarked className="w-10 h-10 text-indigo-600" />
+                  </div>
+                  <h2 className="text-2xl font-bold text-neutral-900 mb-2">Select a Stream</h2>
+                  <p className="text-neutral-600 text-sm mb-6 leading-relaxed">
+                    Choose an existing stream from the left panel, or create a new one to start building your curriculum structure.
+                  </p>
+                  <p className="text-xs text-neutral-500 font-medium">💡 Tip: Use the input field at the bottom of the streams list to add a new stream</p>
+                </div>
               </div>
-            </motion.div>
-          ) : (
-            <div className="h-full flex flex-col items-center justify-center text-center py-20 border-2 border-dashed border-neutral-200 rounded-3xl bg-neutral-50">
-              <div className="bg-indigo-50 w-20 h-20 rounded-full flex items-center justify-center mb-6 shadow-sm">
-                <Layers className="w-10 h-10 text-indigo-400" />
-              </div>
-              <h2 className="text-2xl font-bold text-neutral-800 mb-2">No Stream Selected</h2>
-              <p className="text-neutral-500 max-w-md text-sm">
-                Select a stream from the sidebar or create a new one to start managing the academic curriculum taxonomy.
-              </p>
-            </div>
-          )}
+            )}
+          </div>
+          </div>
         </div>
       </div>
-    </div>
-      </RoleProtectedRoute>
-    );
+    </RoleProtectedRoute>
+  );
 }
