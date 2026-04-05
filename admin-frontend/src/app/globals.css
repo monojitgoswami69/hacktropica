@@ -159,6 +159,22 @@
     display: none;
   }
 
+  /* Utility to show scrollbar when needed */
+  .show-scrollbar {
+    scrollbar-width: thin !important;
+    scrollbar-color: var(--neutral-300) transparent !important;
+  }
+
+  .show-scrollbar::-webkit-scrollbar {
+    display: block !important;
+    width: 6px !important;
+  }
+
+  .show-scrollbar::-webkit-scrollbar-thumb {
+    background-color: var(--neutral-300) !important;
+    border-radius: 10px !important;
+  }
+
   /* Safe area utilities for notched devices */
   .safe-top {
     padding-top: env(safe-area-inset-top);
