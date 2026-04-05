@@ -25,6 +25,7 @@ class QuizOutputSchema(BaseModel):
 class QuizGenerateRequest(BaseModel):
     subject: Optional[str] = None
     document_id: Optional[str] = None
+    module: Optional[str] = None  # Filter by specific module/document
     num_questions: int = Field(default=10, ge=5, le=20)
 
 

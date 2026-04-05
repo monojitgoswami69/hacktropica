@@ -138,6 +138,7 @@ async def ingest_document(
             semester=body.semester,
             stream=body.stream,
             subject=body.subject,
+            module=body.module,
             page_start=c.get("page_start"),
             page_end=c.get("page_end"),
         )
@@ -170,6 +171,7 @@ async def ingest_document(
         "semester": body.semester,
         "stream": body.stream,
         "subject": body.subject,
+        "module": body.module,
         "chunks": len(chunks),
         "uploaded_by": user["_id"],
         "storage_key": storage_key or "",
@@ -214,6 +216,7 @@ async def list_documents(user=Depends(get_current_user), db=Depends(get_db)):
             semester=doc.get("semester"),
             stream=doc.get("stream"),
             subject=doc.get("subject"),
+            module=doc.get("module"),
             chunks=doc.get("chunks", 0),
             storage_key=doc.get("storage_key"),
             preview_url=doc.get("preview_url"),

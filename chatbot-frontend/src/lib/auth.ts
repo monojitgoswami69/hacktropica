@@ -241,6 +241,22 @@ export async function fetchSessionMessages(sessionId: string): Promise<ChatMessa
   }));
 }
 
+export async function deleteSession(sessionId: string): Promise<boolean> {
+  console.log("🔥 deleteSession called with sessionId:", sessionId);
+  try {
+    const res = await apiFetch(`/api/v1/sessions/${sessionId}`, { method: "DELETE" });
+    console.log("📡 Delete response status:", res.status, res.ok);
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error("❌ Delete failed:", errorText);
+    }
+    return res.ok;
+  } catch (err) {
+    console.error("❌ Delete session error:", err);
+    throw err;
+  }
+}
+
 // ─── Stream Query ───
 
 export function streamQueryUrl(): string {

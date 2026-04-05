@@ -45,6 +45,7 @@ class ChunkMetadata:
     semester: Optional[str] = None
     stream: Optional[str] = None
     subject: Optional[str] = None
+    module: Optional[str] = None
     page_start: Optional[int] = None
     page_end: Optional[int] = None
 
@@ -82,6 +83,7 @@ class VectorStore:
             "semesters": set(),
             "streams": set(),
             "subjects": set(),
+            "modules": set(),
         }
 
     # ── Public property for backward compat (quiz, filters use .chunks) ───
@@ -132,7 +134,7 @@ class VectorStore:
                 hnsw_config=HnswConfigDiff(m=16, ef_construct=100, full_scan_threshold=10000),
                 optimizers_config=OptimizersConfigDiff(indexing_threshold=1000),
             )
-            for fld in ("semester", "stream", "subject", "document_id"):
+            for fld in ("semester", "stream", "subject", "module", "document_id"):
                 await asyncio.to_thread(
                     self.client.create_payload_index,
                     collection_name=self.collection_name,
@@ -185,7 +187,7 @@ class VectorStore:
                 "total_chunks": chunk.total_chunks,
                 "source": chunk.source,
             }
-            for opt_field in ("title", "semester", "stream", "subject"):
+            for opt_field in ("title", "semester", "stream", "subject", "module"):
                 val = getattr(chunk, opt_field, None)
                 if val:
                     payload[opt_field] = val
@@ -306,6 +308,7 @@ class VectorStore:
             semester=payload.get("semester"),
             stream=payload.get("stream"),
             subject=payload.get("subject"),
+            module=payload.get("module"),
             page_start=payload.get("page_start"),
             page_end=payload.get("page_end"),
         )
@@ -317,8 +320,10 @@ class VectorStore:
             self._filter_cache["streams"].add(chunk.stream)
         if chunk.subject:
             self._filter_cache["subjects"].add(chunk.subject)
+        if chunk.module:
+            self._filter_cache["modules"].add(chunk.module)
 
     def _rebuild_filter_cache(self) -> None:
-        self._filter_cache = {"semesters": set(), "streams": set(), "subjects": set()}
+        self._filter_cache = {"semesters": set(), "streams": set(), "subjects": set(), "modules": set()}
         for c in self._metadata.values():
             self._update_filter_cache_add(c)

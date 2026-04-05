@@ -8,6 +8,7 @@ class SearchFilter(BaseModel):
     semester: Optional[str] = None
     stream: Optional[str] = None
     subject: Optional[str] = None
+    module: Optional[str] = None
     document_id: Optional[str] = None
 
 
@@ -26,6 +27,7 @@ class SearchResult(BaseModel):
     semester: Optional[str] = None
     stream: Optional[str] = None
     subject: Optional[str] = None
+    module: Optional[str] = None
     document_id: Optional[str] = None
     page_start: Optional[int] = None
     page_end: Optional[int] = None

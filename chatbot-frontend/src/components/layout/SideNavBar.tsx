@@ -20,7 +20,6 @@ export default function SideNavBar({
     handleSelectChat,
     initializeChats,
     handlePinChat,
-    handleShareChat,
     handleDeleteChat,
   } = useChat();
   const [recentChatsOpen, setRecentChatsOpen] = useState(true);
@@ -83,14 +82,6 @@ export default function SideNavBar({
 
   const handlePinClick = (chatId: string) => {
     handlePinChat(chatId);
-    setActiveMenuChatId(null);
-  };
-
-  const handleShareClick = async (chatId: string) => {
-    const copied = await handleShareChat(chatId);
-    if (!copied) {
-      window.alert("Could not copy. Please try again.");
-    }
     setActiveMenuChatId(null);
   };
 
@@ -197,13 +188,6 @@ export default function SideNavBar({
                           >
                             <span className="material-symbols-outlined text-[16px]">push_pin</span>
                             <span>Pin</span>
-                          </button>
-                          <button
-                            onClick={() => handleShareClick(chat.id)}
-                            className="w-full px-3 py-2 text-left text-slate-700 hover:bg-slate-50 flex items-center gap-2 text-sm transition-colors border-t border-slate-100"
-                          >
-                            <span className="material-symbols-outlined text-[16px]">share</span>
-                            <span>Share</span>
                           </button>
                           <button
                             onClick={() => handleDeleteClick(chat.id)}

@@ -2,10 +2,10 @@
 
 import React, { use, useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import RoleProtectedRoute from '../../../../components/RoleProtectedRoute';
-import api from '../../../../services/api';
+import { api } from '../../../../services/api';
 
 const pageVariants = {
   initial: { opacity: 0, y: 10 },
@@ -16,7 +16,6 @@ export default function SubjectAnalyticsPage({ params }) {
   const resolvedParams = use(params);
   const subjectName = decodeURIComponent(resolvedParams.subject);
   const searchParams = useSearchParams();
-  const router = useRouter();
   const semester = searchParams.get('sem') || 'sem 1';
 
   const [analyticsData, setAnalyticsData] = useState(null);
@@ -195,7 +194,7 @@ export default function SubjectAnalyticsPage({ params }) {
                           <td className="py-4 px-6">
                             <div className="flex items-center gap-3">
                               <div className="h-9 w-9 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs shrink-0">
-                                {student.name.split(' ').map(n => n[0]).join('').substring(0,2).toUpperCase()}
+                                {student.name ? student.name.split(' ').map(n => n[0]).join('').substring(0,2).toUpperCase() : 'NA'}
                               </div>
                               <div className="font-bold text-neutral-900 whitespace-nowrap">{student.name}</div>
                             </div>

@@ -12,6 +12,7 @@ class IngestRequest(BaseModel):
     semester: Optional[str] = None
     stream: Optional[str] = None
     subject: Optional[str] = None
+    module: Optional[str] = None
     mime_type: Optional[str] = None
     file_data_base64: Optional[str] = None
     force_ocr: Optional[bool] = False
@@ -32,6 +33,7 @@ class DocumentInfo(BaseModel):
     semester: Optional[str] = None
     stream: Optional[str] = None
     subject: Optional[str] = None
+    module: Optional[str] = None
     chunks: int = 0
     storage_key: Optional[str] = None
     preview_url: Optional[str] = None

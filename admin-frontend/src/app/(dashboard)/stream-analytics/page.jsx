@@ -11,43 +11,18 @@ const pageVariants = {
   animate: { opacity: 1, y: 0, transition: { duration: 0.4 } }
 };
 
-const MOCK_CURRICULUM = {
-  "computer science": {
-    "sem 1": ["programming", "maths"],
-    "sem 2": ["data structures", "logic design"],
-    "sem 3": ["algorithms", "dbms"],
-    "sem 4": ["os", "networks"],
-    "sem 5": ["ai", "soft computing"],
-    "sem 6": ["cloud computing", "security"]
-  }
-};
-
-const MOCK_ANALYTICS = {
-  subjects: [
-    { subject: "Data Structures", total_queries: 452, proficiency_score: 88 },
-    { subject: "Operating Systems", total_queries: 318, proficiency_score: 74 },
-    { subject: "Computer Networks", total_queries: 285, proficiency_score: 62 },
-    { subject: "Database Management", total_queries: 512, proficiency_score: 91 },
-    { subject: "Artificial Intelligence", total_queries: 198, proficiency_score: 56 }
-  ],
-  net_score: 76,
-  total_students: 124,
-  total_queries: 1765,
-  stream: "Computer Science"
-};
-
 export default function StreamAnalytics() {
-  const [selectedSemester, setSelectedSemester] = useState('sem 1');
-  const [analyticsData, setAnalyticsData] = useState(MOCK_ANALYTICS);
-  const [curriculum, setCurriculum] = useState(MOCK_CURRICULUM);
-  const [loading, setLoading] = useState(false);
+  const [selectedSemester, setSelectedSemester] = useState('');
+  const [analyticsData, setAnalyticsData] = useState(null);
+  const [curriculum, setCurriculum] = useState({});
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   // Fetch curriculum to populate semester dropdown
   useEffect(() => {
     api.filters.getFilters().then(data => {
-      const curricData = data.curriculum || MOCK_CURRICULUM;
+      const curricData = data.curriculum || {};
       setCurriculum(curricData);
       const allSemesters = new Set();
       Object.values(curricData).forEach(streamData => {
@@ -57,10 +32,7 @@ export default function StreamAnalytics() {
       if (semList.length > 0 && !selectedSemester) {
         setSelectedSemester(semList[0]);
       }
-    }).catch(() => {
-        // Keep mock data if API fails
-        setCurriculum(MOCK_CURRICULUM);
-    });
+    }).catch(() => {});
   }, []);
 
   // Fetch analytics when semester changes
@@ -70,12 +42,11 @@ export default function StreamAnalytics() {
     setError(null);
     api.analytics.stream(selectedSemester)
       .then(data => {
-        setAnalyticsData(data || MOCK_ANALYTICS);
+        setAnalyticsData(data);
         setLoading(false);
       })
       .catch(err => {
-        // Fallback to mock data on error for demo purposes
-        setAnalyticsData(MOCK_ANALYTICS);
+        setError(err.message || 'Failed to fetch analytics');
         setLoading(false);
       });
   }, [selectedSemester]);
@@ -178,67 +149,91 @@ export default function StreamAnalytics() {
             </div>
           </div>
 
-          <div className="flex flex-col lg:flex-row items-center gap-12 lg:gap-16">
-            <div className="flex-1 w-full flex flex-col space-y-6">
-              {[
-                { name: "Data Structures & Algorithms", mastery: 92 },
-                { name: "Operating Systems", mastery: 78 },
-                { name: "Database Management", mastery: 85 },
-                { name: "Discrete Mathematics", mastery: 64 }
-              ].map((item, idx) => {
-                 let textColor = '';
-                 let barColor = 'bg-[#5665b1]';
-                 
-                 if (item.mastery >= 80) textColor = 'text-[#268e54]';
-                 else if (item.mastery >= 70) textColor = 'text-[#5665b1]';
-                 else textColor = 'text-[#9fa8b8]';
-
-                 return (
-                   <div key={idx} className="flex flex-col space-y-2.5">
-                     <div className="flex justify-between items-center font-bold">
-                        <span className="text-[#515a6b] text-[15px]">{item.name}</span>
-                        <span className={`${textColor} text-[15px]`}>{item.mastery}% Mastery</span>
-                     </div>
-                     <div className="w-full bg-neutral-100 rounded-full h-[11px] overflow-hidden">
-                        <div className={`h-full rounded-full ${barColor}`} style={{ width: `${item.mastery}%` }}></div>
-                     </div>
-                   </div>
-                 );
-              })}
+          {loading ? (
+            <div className="flex items-center justify-center py-20">
+              <div className="flex flex-col items-center gap-4">
+                <div className="w-10 h-10 border-3 border-primary-200 border-t-primary-600 rounded-full animate-spin"></div>
+                <span className="text-sm font-medium text-neutral-400">Loading analytics...</span>
+              </div>
             </div>
+          ) : error ? (
+            <div className="flex items-center justify-center py-20">
+              <div className="text-center">
+                <span className="material-symbols-outlined text-4xl text-red-300 mb-2">error</span>
+                <p className="text-sm text-red-500 font-medium">{error}</p>
+              </div>
+            </div>
+          ) : subjects.length === 0 ? (
+            <div className="flex items-center justify-center py-20">
+              <div className="text-center">
+                <span className="material-symbols-outlined text-4xl text-neutral-300 mb-2">analytics</span>
+                <p className="text-sm text-neutral-400 font-medium">No analytics data available for this semester yet.</p>
+                <p className="text-xs text-neutral-300 mt-1">Students need to make queries to generate proficiency data.</p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col lg:flex-row items-center gap-12 lg:gap-16">
+              {/* Left: Progress Bars — each subject links to its deep-dive page */}
+              <div className="flex-1 w-full space-y-8">
+                {subjects.map((item, idx) => (
+                  <Link 
+                    href={`/stream-analytics/${encodeURIComponent(item.subject)}?sem=${encodeURIComponent(selectedSemester)}`} 
+                    key={idx} 
+                    className="block space-y-3 cursor-pointer group"
+                  >
+                    <div className="flex justify-between text-xs font-bold text-neutral-600 uppercase tracking-widest group-hover:text-primary-600 transition-colors">
+                      <span className="flex items-center gap-2">
+                         {item.subject}
+                         <span className="material-symbols-outlined text-[14px] opacity-0 group-hover:opacity-100 transition-opacity">arrow_forward</span>
+                      </span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-[10px] text-neutral-400 normal-case tracking-normal">{item.total_queries} queries</span>
+                        <span className="text-primary-600 text-sm group-hover:text-primary-700">{item.proficiency_score}%</span>
+                      </div>
+                    </div>
+                    <div className="h-2.5 w-full bg-neutral-100 rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full rounded-full transition-all duration-1000 ${item.proficiency_score < 70 ? 'bg-amber-400' : item.proficiency_score < 80 ? 'bg-primary-400' : 'bg-primary-600'}`} 
+                        style={{ width: `${item.proficiency_score}%` }}
+                      ></div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
 
-            {/* Right: Circular Graph */}
-            <div className="relative shrink-0 flex items-center justify-center p-4 lg:p-8">
-              <div className="relative w-56 h-56 flex items-center justify-center">
-                {/* Background Track */}
-                <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 100 100">
-                  <circle 
-                    cx="50" cy="50" r="44" 
-                    fill="transparent" 
-                    stroke="currentColor" 
-                    strokeWidth="8" 
-                    className="text-neutral-100" 
-                  />
-                  {/* Progress Arc: r=44 means circumference = 2 * PI * 44 = 276.46 */}
-                  <circle 
-                    cx="50" cy="50" r="44" 
-                    fill="transparent" 
-                    stroke="currentColor" 
-                    strokeWidth="8" 
-                    strokeLinecap="round"
-                    strokeDasharray="276.46" 
-                    strokeDashoffset={276.46 - (87.6 / 100) * 276.46}
-                    className="text-primary-600 transition-all duration-1000 ease-out" 
-                  />
-                </svg>
-                {/* Center Content */}
-                <div className="relative z-10 text-center flex flex-col items-center justify-center">
-                  <span className="text-5xl font-black text-neutral-900 tracking-tighter" style={{ lineHeight: '1.1' }}>87.6%</span>
-                  <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest mt-1">Avg Score</span>
+              {/* Right: Circular Graph */}
+              <div className="relative shrink-0 flex items-center justify-center p-4 lg:p-8">
+                <div className="relative w-56 h-56 flex items-center justify-center">
+                  {/* Background Track */}
+                  <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 100 100">
+                    <circle 
+                      cx="50" cy="50" r="44" 
+                      fill="transparent" 
+                      stroke="currentColor" 
+                      strokeWidth="8" 
+                      className="text-neutral-100" 
+                    />
+                    {/* Progress Arc: r=44 means circumference = 2 * PI * 44 = 276.46 */}
+                    <circle 
+                      cx="50" cy="50" r="44" 
+                      fill="transparent" 
+                      stroke="currentColor" 
+                      strokeWidth="8" 
+                      strokeLinecap="round"
+                      strokeDasharray="276.46" 
+                      strokeDashoffset={276.46 - (netScore / 100) * 276.46}
+                      className="text-primary-600 transition-all duration-1000 ease-out" 
+                    />
+                  </svg>
+                  {/* Center Content */}
+                  <div className="relative z-10 text-center flex flex-col items-center justify-center">
+                    <span className="text-6xl font-black text-neutral-900 tracking-tighter" style={{ lineHeight: '1.1' }}>{netScore}</span>
+                    <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest mt-1">Avg Score</span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Bottom Section: Query Stats Summary */}

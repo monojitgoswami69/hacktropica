@@ -80,9 +80,11 @@ class Database:
         await self.db.student_profiles.create_index([("stream", 1), ("sem", 1)])
 
         # ── Other Collections ─────────────────────────────────────────
-        # Sessions (30-day TTL)
+        # Sessions - NO TTL! Sessions should persist indefinitely
+        # Users can manually delete old sessions if needed
         await self.db.sessions.create_index([("uid", 1), ("updated_at", -1)])
-        await self.db.sessions.create_index("updated_at", expireAfterSeconds=2592000)
+        # REMOVED: TTL index that was auto-deleting sessions
+        # await self.db.sessions.create_index("updated_at", expireAfterSeconds=2592000)
 
         # Documents
         await self.db.documents.create_index("created_at")

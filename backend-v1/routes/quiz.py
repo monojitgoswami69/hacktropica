@@ -42,17 +42,32 @@ def _collect_context_for_quiz(
     chunks: Dict[str, ChunkMetadata],
     subject: Optional[str],
     document_id: Optional[str] = None,
+    module: Optional[str] = None,
     max_chars: int = 150_000,
 ) -> Tuple[str, int]:
-    """Collect chunk text for quiz generation."""
+    """Collect chunk text for quiz generation.
+    
+    Args:
+        chunks: All available chunks
+        subject: Filter by subject name
+        document_id: Filter by specific document ID (legacy parameter)
+        module: Filter by module/document ID (same as document_id, preferred name)
+        max_chars: Maximum characters to include
+    
+    Returns:
+        Tuple of (context_text, chunks_used_count)
+    """
     selected: List[ChunkMetadata] = []
+    
+    # Use module parameter if provided, otherwise fall back to document_id
+    target_doc_id = module or document_id
 
     for chunk in chunks.values():
         match = True
         if subject and subject != "All Subjects":
             if (chunk.subject or "General").lower() != subject.lower():
                 match = False
-        if document_id and chunk.document_id != document_id:
+        if target_doc_id and chunk.document_id != target_doc_id:
             match = False
         if match:
             selected.append(chunk)
@@ -101,13 +116,39 @@ async def generate_quiz(
     if not vs.chunks:
         raise HTTPException(404, "No study materials found. Upload documents first.")
 
+    # Determine filter labels for user feedback
     subject_label = body.subject if body.subject and body.subject != "All Subjects" else "All Subjects"
-    context, chunks_used = _collect_context_for_quiz(vs.chunks, body.subject, body.document_id)
+    module_label = None
+    
+    # If module is specified, try to get its title from chunks
+    target_module = body.module or body.document_id
+    if target_module:
+        for chunk in vs.chunks.values():
+            if chunk.document_id == target_module:
+                module_label = chunk.title or chunk.source or target_module
+                break
+    
+    # Collect context with module filtering
+    context, chunks_used = _collect_context_for_quiz(
+        vs.chunks, 
+        body.subject, 
+        body.document_id,
+        body.module
+    )
 
     if chunks_used == 0:
-        raise HTTPException(404, f"No material found for subject '{subject_label}'")
+        filter_desc = f"subject '{subject_label}'"
+        if module_label:
+            filter_desc += f" and module '{module_label}'"
+        raise HTTPException(404, f"No material found for {filter_desc}")
 
-    prompt = f"""Generate exactly {body.num_questions} multiple-choice questions for: {subject_label}.
+    # Build prompt with filter information
+    filter_info = f"Subject: {subject_label}"
+    if module_label:
+        filter_info += f"\nModule: {module_label}"
+    
+    prompt = f"""Generate exactly {body.num_questions} multiple-choice questions for:
+{filter_info}
 
 Below is the study material. Base ALL questions strictly on this content.
 

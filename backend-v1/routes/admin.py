@@ -67,7 +67,7 @@ async def enroll_students(
             await db.db.student_auth.insert_one({
                 "_id": uid,
                 "email": email,
-                "password_hash": AuthService.hash_password("aot169"),
+                "password_hash": AuthService.hash_password("student123"),
                 "role": "student",
             })
 
@@ -237,4 +237,59 @@ async def get_filters(vs=Depends(get_vector_store), db=Depends(get_db)):
     return {
         **filter_values,
         "curriculum": curriculum
+    }
+
+
+@router.get("/dashboard")
+async def admin_dashboard(
+    user=Depends(get_current_user),
+    db=Depends(get_db),
+):
+    """
+    Admin dashboard: weekly query metrics and recent activity logs.
+    Returns weekly_data and activity for the dashboard page.
+    """
+    require_admin(user)
+    
+    from datetime import timedelta
+    import pytz
+    
+    ist = pytz.timezone("Asia/Kolkata")
+    today = datetime.now(ist)
+    
+    # Get weekly query data from daily_queries collection
+    weekly_data = []
+    for i in range(6, -1, -1):
+        date = today - timedelta(days=i)
+        date_str = date.strftime("%Y-%m-%d")
+        display_date = date.strftime("%d/%m/%Y")
+        
+        daily_doc = await db.db.daily_queries.find_one({"date": date_str})
+        query_count = daily_doc.get("count", 0) if daily_doc else 0
+        
+        weekly_data.append({
+            "date": display_date,
+            "queries": query_count
+        })
+    
+    # Get recent activity from audit_logs
+    activity = []
+    cursor = db.db.audit_logs.find().sort("timestamp", -1).limit(20)
+    
+    async for log in cursor:
+        activity.append({
+            "id": str(log.get("_id")),
+            "action": log.get("action", "unknown"),
+            "timestamp": log.get("timestamp").isoformat() if log.get("timestamp") else datetime.utcnow().isoformat(),
+            "actor": log.get("user_email", log.get("user_id", "System")),
+            "meta": {
+                "filename": log.get("details", {}).get("title") or log.get("details", {}).get("source", ""),
+                **log.get("details", {})
+            }
+        })
+    
+    return {
+        "weekly_data": weekly_data,
+        "activity": activity,
+        "total_queries": sum(d["queries"] for d in weekly_data)
     }

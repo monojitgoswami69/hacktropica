@@ -115,7 +115,8 @@ async def subject_detail(
     students = await _get_students_with_stats(db, target_stream, semester)
     module_query_totals: Dict[str, dict] = {}
     students_data = []
-    safe_subject_key = subject_name.replace(".", "_").replace("/", "_")
+    # CRITICAL: Must match the sanitization in tracking (spaces replaced with underscores)
+    safe_subject_key = subject_name.replace(".", "_").replace("/", "_").replace(" ", "_")
 
     for student in students:
         student_subject_queries = student["by_subject"].get(safe_subject_key, 0)
@@ -124,7 +125,9 @@ async def subject_detail(
         top_modules = []
         for doc_id, mod_data in student["by_module"].items():
             if isinstance(mod_data, dict):
-                if str(mod_data.get("subject", "")).lower() == subject_name.lower():
+                # Compare subjects case-insensitively and handle spaces
+                mod_subject = str(mod_data.get("subject", "")).replace(" ", "_")
+                if mod_subject.lower() == safe_subject_key.lower():
                     mod_queries = mod_data.get("queries", 0)
                     if doc_id not in module_query_totals:
                         module_query_totals[doc_id] = {"document_id": doc_id, "title": mod_data.get("title", "Unknown"), "query_count": 0}
@@ -410,4 +413,152 @@ async def my_hit_counts(
         "total_queries": stats.get("total_queries", 0),
         "by_subject": by_subject,
         "by_module": modules,
+    }
+
+
+# ── Individual Student Analytics ──────────────────────────────────────
+
+
+@router.get("/student/{student_uid}/detail")
+async def student_detail_analytics(
+    student_uid: str,
+    user=Depends(get_current_user),
+    db=Depends(get_db),
+):
+    """
+    Get detailed analytics for a specific student.
+    Shows subjects and modules they interact with most.
+    Faculty+ can view any student, students can only view themselves.
+    """
+    # Authorization check
+    if user.get("role") not in ("faculty", "hod", "admin", "superuser"):
+        if user["_id"] != student_uid:
+            from fastapi import HTTPException
+            raise HTTPException(403, "Not authorized to view this student's data")
+    
+    # Get student profile
+    profile = await db.db.student_profiles.find_one({"_id": student_uid})
+    if not profile:
+        from fastapi import HTTPException
+        raise HTTPException(404, "Student not found")
+    
+    # Get student stats
+    stats = await db.db.query_stats.find_one({"_id": student_uid}) or {}
+    
+    # Get daily queries for last 7 days
+    ist = pytz.timezone("Asia/Kolkata")
+    today = datetime.now(ist)
+    daily_queries_data = []
+    daily_queries_dict = stats.get("daily_queries", {})
+    
+    for i in range(6, -1, -1):
+        date = today - timedelta(days=i)
+        date_str = date.strftime("%Y-%m-%d")
+        display_date = date.strftime("%d/%m")
+        daily_queries_data.append({
+            "date": display_date,
+            "queries": daily_queries_dict.get(date_str, 0)
+        })
+    
+    # Process subjects
+    by_subject_raw = stats.get("by_subject", {})
+    subjects = [
+        {
+            "subject": k.replace("_", " "),
+            "query_count": v,
+            "percentage": round((v / stats.get("total_queries", 1)) * 100, 1)
+        }
+        for k, v in sorted(by_subject_raw.items(), key=lambda x: x[1], reverse=True)
+    ]
+    
+    # Process modules
+    by_module_raw = stats.get("by_module", {})
+    modules = []
+    for doc_id, mod_data in by_module_raw.items():
+        if isinstance(mod_data, dict):
+            modules.append({
+                "document_id": doc_id,
+                "title": mod_data.get("title", "Unknown"),
+                "subject": mod_data.get("subject", "Unknown"),
+                "query_count": mod_data.get("queries", 0),
+                "percentage": round((mod_data.get("queries", 0) / stats.get("total_queries", 1)) * 100, 1)
+            })
+    modules.sort(key=lambda m: m["query_count"], reverse=True)
+    
+    return {
+        "uid": student_uid,
+        "name": profile.get("name", profile.get("display_name", "Unknown")),
+        "roll": profile.get("roll", "N/A"),
+        "email": profile.get("email", ""),
+        "stream": profile.get("stream", ""),
+        "semester": profile.get("sem", ""),
+        "total_queries": stats.get("total_queries", 0),
+        "subjects": subjects,
+        "modules": modules[:10],  # Top 10 modules
+        "daily_queries": daily_queries_data,
+    }
+
+
+@router.get("/module/{document_id}/students")
+async def module_students_list(
+    document_id: str,
+    semester: Optional[str] = None,
+    user=Depends(get_current_user),
+    db=Depends(get_db),
+):
+    """
+    Get list of all students who interacted with a specific module/document.
+    Used when clicking on a heatmap item in subject analysis.
+    Faculty+ only.
+    """
+    require_faculty(user)
+    
+    profile = await db.db.dashboard_profiles.find_one({"_id": user["_id"]}) or {}
+    target_stream = profile.get("stream", "cse")
+    
+    # Get all students in the stream
+    students = await _get_students_with_stats(db, target_stream, semester)
+    
+    # Sanitize document_id for MongoDB field name
+    safe_doc_id = document_id.replace(".", "_").replace("/", "_")
+    
+    # Filter students who have interacted with this module
+    students_with_module = []
+    module_title = "Unknown"
+    module_subject = "Unknown"
+    
+    for student in students:
+        by_module = student.get("by_module", {})
+        
+        # Check both sanitized and original document_id
+        mod_data = by_module.get(safe_doc_id) or by_module.get(document_id)
+        
+        if mod_data and isinstance(mod_data, dict):
+            query_count = mod_data.get("queries", 0)
+            if query_count > 0:
+                # Get module metadata from first student who has it
+                if module_title == "Unknown":
+                    module_title = mod_data.get("title", "Unknown")
+                    module_subject = mod_data.get("subject", "Unknown")
+                
+                students_with_module.append({
+                    "uid": student["uid"],
+                    "name": student["name"],
+                    "roll": student["roll"],
+                    "query_count": query_count,
+                    "percentage": round((query_count / student["total_queries"]) * 100, 1) if student["total_queries"] > 0 else 0
+                })
+    
+    # Sort by query count descending
+    students_with_module.sort(key=lambda s: s["query_count"], reverse=True)
+    
+    return {
+        "document_id": document_id,
+        "title": module_title,
+        "subject": module_subject,
+        "stream": target_stream,
+        "semester": semester,
+        "total_students": len(students_with_module),
+        "total_queries": sum(s["query_count"] for s in students_with_module),
+        "students": students_with_module,
     }

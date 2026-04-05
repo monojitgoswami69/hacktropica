@@ -31,8 +31,7 @@ interface ChatContextType {
   initializeChats: (userUid: string) => void;
   abortStream: () => void;
   handlePinChat: (id: string) => void;
-  handleShareChat: (id: string) => Promise<boolean>;
-  handleDeleteChat: (id: string) => void;
+  handleDeleteChat: (id: string) => Promise<void>;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -114,27 +113,29 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const handleShareChat = async (id: string) => {
-    const chat = chats.find((c) => c.id === id);
-    if (!chat) return false;
-
-    const transcript = chat.messages
-      .map((m) => `${m.role === "user" ? "You" : "Assistant"}: ${m.text}`)
-      .join("\n\n");
-    const shareText = `${chat.name}\n\n${transcript || "No messages yet."}`;
-
-    try {
-      await navigator.clipboard.writeText(shareText);
-      return true;
-    } catch {
-      return false;
-    }
-  };
-
-  const handleDeleteChat = (id: string) => {
+  const handleDeleteChat = async (id: string) => {
+    console.log("🗑️ Delete chat called for ID:", id);
+    
     if (isStreaming && currentChatId === id && abortControllerRef.current) {
       abortControllerRef.current.abort();
       setIsStreaming(false);
+    }
+
+    const targetChat = chats.find((c) => c.id === id);
+    console.log("🔍 Target chat:", targetChat);
+    
+    // Delete from backend if it has a session ID
+    if (targetChat?.sessionId) {
+      console.log("📡 Calling backend to delete session:", targetChat.sessionId);
+      try {
+        const { deleteSession } = await import("@/lib/auth");
+        const result = await deleteSession(targetChat.sessionId);
+        console.log("✅ Backend delete result:", result);
+      } catch (err) {
+        console.error("❌ Failed to delete session from backend:", err);
+      }
+    } else {
+      console.log("⚠️ No session ID, skipping backend delete");
     }
 
     setChats((prev) => {
@@ -148,6 +149,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     });
 
     setCurrentChatId((prev) => (prev === id ? null : prev));
+    console.log("✅ Chat deleted from local state");
   };
 
   const handleNewChat = () => {
@@ -364,7 +366,15 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         if (c.id === targetChatId) {
           const newMsgs = [...c.messages];
           newMsgs[newMsgs.length - 1] = { role: "bot", text: botResponse, sources: botSources.length > 0 ? botSources : undefined };
-          return { ...c, messages: newMsgs };
+          
+          // Update chat name if it's still the default truncated query and we have a session
+          const updatedChat = { ...c, messages: newMsgs };
+          if (sessionId && c.messages.length === 1) {
+            // This was the first message, update the name to match what backend saved
+            updatedChat.name = text.slice(0, 60);
+          }
+          
+          return updatedChat;
         }
         return c;
       }));
@@ -373,6 +383,23 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       const finalMsgs = [...updatedMessages, { role: "bot" as const, text: botResponse, sources: botSources.length > 0 ? botSources : undefined }];
       if (sessionId) {
         localStorage.setItem(`cached_messages_${sessionId}`, JSON.stringify(finalMsgs));
+        
+        // Update cached sessions with the new title
+        if (user && targetChat && targetChat.messages.length === 0) {
+          const updatedChatsList = chats.map(c => 
+            c.id === targetChatId 
+              ? { ...c, name: text.slice(0, 60), sessionId } 
+              : c
+          );
+          localStorage.setItem(
+            `cached_sessions_${user.uid}`,
+            JSON.stringify(updatedChatsList.map((c) => ({ 
+              id: c.sessionId || c.id, 
+              name: c.name, 
+              pinned: Boolean(c.pinned) 
+            })))
+          );
+        }
       }
 
     } catch (err: unknown) {
@@ -414,7 +441,6 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       initializeChats,
       abortStream,
       handlePinChat,
-      handleShareChat,
       handleDeleteChat,
     }}>
       {children}

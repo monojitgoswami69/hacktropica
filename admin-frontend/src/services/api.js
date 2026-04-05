@@ -693,6 +693,28 @@ export const api = {
     },
 
     /**
+     * Get detailed analytics for a specific student
+     * Shows subjects, modules, and daily query activity
+     * @param {string} studentUid - Student UID
+     */
+    studentDetail: async (studentUid) => {
+      return apiRequest(`/api/v1/analytics/student/${encodeURIComponent(studentUid)}/detail`);
+    },
+
+    /**
+     * Get list of students who interacted with a specific module
+     * Used when clicking on a heatmap item
+     * @param {string} documentId - Document/module ID
+     * @param {string} [semester] - Optional semester filter
+     */
+    moduleStudents: async (documentId, semester = null) => {
+      const params = new URLSearchParams();
+      if (semester) params.append('semester', semester);
+      const queryString = params.toString();
+      return apiRequest(`/api/v1/analytics/module/${encodeURIComponent(documentId)}/students${queryString ? `?${queryString}` : ''}`);
+    },
+
+    /**
      * Pre-aggregated hit count endpoints (fast O(1) reads)
      */
     hitCounts: {

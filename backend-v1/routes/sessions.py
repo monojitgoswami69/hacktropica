@@ -59,3 +59,22 @@ async def get_session_messages(
             m["ts"] = m["ts"].isoformat()
 
     return {"session_id": session_id, "messages": messages}
+
+
+@router.delete("/sessions/{session_id}")
+async def delete_session(
+    session_id: str,
+    user=Depends(get_current_user),
+    db=Depends(get_db),
+):
+    """Delete a chat session."""
+    session = await db.db.sessions.find_one({"_id": session_id, "uid": user["_id"]})
+    if not session:
+        raise HTTPException(404, "Session not found")
+    
+    result = await db.db.sessions.delete_one({"_id": session_id, "uid": user["_id"]})
+    
+    if result.deleted_count == 0:
+        raise HTTPException(404, "Session not found")
+    
+    return {"message": "Session deleted successfully", "session_id": session_id}
