@@ -291,15 +291,15 @@ async def get_document_preview(
 
 
 @router.get("/documents/{document_id}/file")
-async def proxy_document_file(
+async def stream_document_preview_file(
     document_id: str,
     user=Depends(get_current_user),
     db=Depends(get_db),
     storage=Depends(get_storage_service),
 ):
     """
-    Proxy-stream the actual file bytes from R2.
-    This avoids CORS/auth issues since the browser fetches from our backend.
+    Stream original file bytes via backend for browser previews.
+    Useful for PDF.js, which otherwise fails on R2 CORS in some setups.
     """
     doc = await db.db.documents.find_one({"_id": document_id})
     if not doc:
@@ -307,41 +307,26 @@ async def proxy_document_file(
 
     storage_key = doc.get("storage_key")
     if not storage_key:
-        raise HTTPException(404, "Original file not available")
+        raise HTTPException(404, "Original file not available (text-only ingest)")
     if not storage:
         raise HTTPException(503, "File storage not configured")
 
-    # Download from R2 and stream to client
+    # Download from R2 and stream to client.
     try:
-        file_bytes = await storage.download(storage_key)
+        data = await storage.download(storage_key)
     except Exception as exc:
         logger.error("R2 download failed for %s: %s", storage_key, exc)
         raise HTTPException(502, "Failed to retrieve file from storage")
 
-    # Determine content type from filename
-    source = doc.get("source", "file")
-    ext = source.rsplit(".", 1)[-1].lower() if "." in source else ""
-    content_type_map = {
-        "pdf": "application/pdf",
-        "png": "image/png",
-        "jpg": "image/jpeg",
-        "jpeg": "image/jpeg",
-        "gif": "image/gif",
-        "webp": "image/webp",
-        "svg": "image/svg+xml",
-        "txt": "text/plain",
-        "md": "text/markdown",
-        "csv": "text/csv",
-        "json": "application/json",
-    }
-    content_type = content_type_map.get(ext, "application/octet-stream")
+    source = doc.get("source") or f"{document_id}.bin"
+    media_type = _guess_mime(source)
 
     return StreamingResponse(
-        iter([file_bytes]),
-        media_type=content_type,
+        iter([data]),
+        media_type=media_type,
         headers={
             "Content-Disposition": f'inline; filename="{source}"',
-            "Cache-Control": "private, max-age=3600",
+            "Cache-Control": "private, max-age=300",
         },
     )
 

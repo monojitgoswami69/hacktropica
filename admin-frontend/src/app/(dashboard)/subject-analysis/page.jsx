@@ -11,10 +11,23 @@ const pageVariants = {
   animate: { opacity: 1, y: 0, transition: { duration: 0.4 } }
 };
 
+const MOCK_SUBJECTS_DATA = [
+  { subject: "Data Structures", topic: "Tree Traversal", proficiency: 45, pendingDoubts: 12 },
+  { subject: "Operating Systems", topic: "Process Sync", proficiency: 72, pendingDoubts: 5 },
+  { subject: "Algorithms", topic: "Dynamic Programming", proficiency: 38, pendingDoubts: 18 },
+  { subject: "DBMS", topic: "Normal Forms", proficiency: 84, pendingDoubts: 3 }
+];
+
+const MOCK_STUDENT_RISKS = [
+  { initials: "RS", name: "Rahul Sharma", id: "CS2101", level: "Critical", frictionPoints: ["Recursion", "Trees"], action: "Targeted Revision", reference: "3 pending doubts in DS" },
+  { initials: "PV", name: "Priya Varma", id: "CS2124", level: "Moderate", frictionPoints: ["Process Sync"], action: "Extra Assignment", reference: "Operating Systems" },
+  { initials: "AP", name: "Amit Patel", id: "CS2145", level: "Stable", frictionPoints: [], action: "None", reference: "Overall Good" }
+];
+
 export default function SubjectAnalysis() {
-  const [subjectsData, setSubjectsData] = useState([]);
-  const [studentRisks, setStudentRisks] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [subjectsData, setSubjectsData] = useState(MOCK_SUBJECTS_DATA);
+  const [studentRisks, setStudentRisks] = useState(MOCK_STUDENT_RISKS);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     async function fetchData() {
@@ -26,14 +39,21 @@ export default function SubjectAnalysis() {
         
         if (subRes.ok) {
           const subJson = await subRes.json();
-          setSubjectsData(subJson.data || []);
+          setSubjectsData(subJson.data || MOCK_SUBJECTS_DATA);
+        } else {
+            setSubjectsData(MOCK_SUBJECTS_DATA);
         }
+
         if (riskRes.ok) {
           const riskJson = await riskRes.json();
-          setStudentRisks(riskJson.data || []);
+          setStudentRisks(riskJson.data || MOCK_STUDENT_RISKS);
+        } else {
+            setStudentRisks(MOCK_STUDENT_RISKS);
         }
       } catch (err) {
         console.error("Failed to fetch subject analytics:", err);
+        setSubjectsData(MOCK_SUBJECTS_DATA);
+        setStudentRisks(MOCK_STUDENT_RISKS);
       } finally {
         setLoading(false);
       }

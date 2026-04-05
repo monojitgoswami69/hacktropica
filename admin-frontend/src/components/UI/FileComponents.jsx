@@ -141,16 +141,22 @@ const CustomPDFViewer = ({ url }) => {
   const [numPages, setNumPages] = useState(null);
   const [scale, setScale] = useState(1.0);
 
-  // Build file prop with auth headers for backend-proxied URLs
+  // Only attach auth header for protected backend preview endpoint.
+  // External/public URLs should not get Authorization headers.
   const fileProp = useMemo(() => {
     if (!url) return null;
-    // If the URL points to our backend proxy, attach auth headers
     const token = (() => {
       try {
         return sessionStorage.getItem('admin_token') || localStorage.getItem('admin_token');
       } catch { return null; }
     })();
-    if (token) {
+
+    const isProtectedPreviewRoute =
+      typeof url === 'string' &&
+      url.includes('/api/v1/documents/') &&
+      (url.includes('/file') || url.includes('/preview-file'));
+
+    if (token && isProtectedPreviewRoute) {
       return { url, httpHeaders: { Authorization: `Bearer ${token}` } };
     }
     return url;
@@ -266,10 +272,18 @@ export function FilePreview({ doc, onClose, onSave, isArchived = false }) {
       }
 
       try {
-        const { api } = await import('../../services/api');
+        const { api, API_BASE_URL } = await import('../../services/api');
 
-        // For images and PDFs — get the R2 preview URL from the backend
-        if (isImage || isPDF) {
+        if (isPDF) {
+          if (doc.id) {
+            // Stream through backend to avoid browser CORS issues with R2 in PDF.js.
+            if (isMounted) {
+              setContent(`${API_BASE_URL}/api/v1/documents/${doc.id}/preview-file`);
+            }
+          } else if (isMounted) {
+            setContent(doc.preview_url || doc.download_url || null);
+          }
+        } else if (isImage) {
           if (doc.id) {
             try {
               const previewUrl = await api.knowledgeBase.preview(doc.id);
